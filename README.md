@@ -12,16 +12,17 @@ How to download/install run the simulator package docker image:
 
     4a: this is a CHONKER. Expect it to take around 30 min - 1 hr. to build, and takes about
         2 GB for the Ubuntu OS
-        13 GB for SITL + dependencies
+        13 GB for PX4 + SITL + dependencies
         7 GB for QGroundControl
-        ? GB for ROS2
-        for a total of ? GB
+        2 GB for ROS2
+        for a total of 24 GB
         The benefit is that you will never have to worry about this step ever again, and the simulator should always work.* knock on wood
 
 5. To start the docker container, run: 
 
-    docker run -it -e DISPLAY=host.docker.internal:0 simulator
+    docker run --rm -it -e DISPLAY=host.docker.internal:0 simulator
 
+    The --rm flag means "clean up afterward, don't leave the container sitting there"
     The -it flag means "in an interactive terminal"
     The -e flag means "with environment variable"; we want to set the DISPLAY to connect to your device so you can see the Gazebo simulator window and interact with it
 
@@ -29,11 +30,12 @@ How to download/install run the simulator package docker image:
 
 6. Once in the container, you should see a bash terminal. you can try typing "ls" or "help", these should work as expected. You are now inside a virtual environment running Ubuntu.
 
-7. Get a couple terminals side by side. To do this, you can use a fancy trick called "tmux" (short for terminal multiplexor). Just run the command "tmux", and then you can do the following:
+7. Get a couple terminals side by side. To do this, you can use a fancy trick called "tmux" (short for terminal multiplexor). Just run the command "tmux", and then you can do the following (the docker image should run tmux automatically so you don't have to do it again):
     - ctrl + B and " (shift+') adds another terminal to the side.
     - ctrl + B and % (shift+5) adds another terminal above.
     - ctrl + B and ARROWKEYS (left right up down) allows you to navigate between terminals
     - ctrl + B and [ allows you to scroll up in the current terminal you're in to look at previous stuff. hit escape to go back to normal.
+    - ctrl + B and R to refresh the screen
 
 8. To start QGroundControl, just run the command "qgroundcontrol", and it should work out of the box (it may throw some warning messages but that's okay)
 
@@ -42,6 +44,14 @@ How to download/install run the simulator package docker image:
     make px4_sitl gz_x500_mono_cam
 
     If successful, you should see the **PX4** logo come up, along with a window for the Gazebo simulator and the "drone" sitting on the ground. It should say ready for takeoff, as QGroundControl should recognize the connection to PX4.
+    
+10. To view odometry data (e.g. position, velocity), you can run:
+    
+    ros2 topic echo /fmu/out/vehicle_odometry
+
+11. To run an example script that uses ROS to command the drone to arm and takeoff to 5 meters, you can run:
+
+    ros2 run px4_ros_com offboard_control
 
 
 ### SITL debugging stuff

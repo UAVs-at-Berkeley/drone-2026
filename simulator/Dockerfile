@@ -103,12 +103,45 @@ RUN apt-get update && apt-get install -y \
 RUN echo "source /opt/ros/jazzy/setup.bash" >> /home/qgcuser/.bashrc && \
     chown qgcuser:qgcuser /home/qgcuser/.bashrc
 
-# Set working directory to PX4-Autopilot (user can change this if needed)
-WORKDIR /PX4-Autopilot
+# Install colcon and build dependencies for DDS client
+RUN apt-get update && apt-get install -y \
+    python3-colcon-common-extensions \
+    python3-pip \
+    python3-vcstool \
+    && rm -rf /var/lib/apt/lists/*
 
 # Switch to non-root user
 USER qgcuser
 
+# Create workspace and clone Micro-XRCE-DDS-Agent
+RUN mkdir -p ~/px4_ros_uxrce_dds_ws/src && \
+    cd ~/px4_ros_uxrce_dds_ws/src && \
+    git clone -b v2.4.3 https://github.com/eProsima/Micro-XRCE-DDS-Agent.git
+
+# Build the workspace (source ROS in the same RUN command)
+WORKDIR /home/qgcuser/px4_ros_uxrce_dds_ws
+RUN /bin/bash -c "source /opt/ros/jazzy/setup.bash && colcon build"
+
+# Add workspace setup to .bashrc so it's available in interactive shells
+RUN echo "source ~/px4_ros_uxrce_dds_ws/install/local_setup.bash" >> ~/.bashrc
+
+# Create PX4 ROS2 workspace and clone required repositories
+RUN mkdir -p ~/px4_ros_com_ws/src && \
+    cd ~/px4_ros_com_ws/src && \
+    git clone https://github.com/PX4/px4_msgs.git && \
+    git clone https://github.com/PX4/px4_ros_com.git
+
+# Build the PX4 ROS2 workspace
+WORKDIR /home/qgcuser/px4_ros_com_ws
+RUN /bin/bash -c "source /opt/ros/jazzy/setup.bash && colcon build"
+
+# Add PX4 ROS2 workspace setup to .bashrc
+RUN echo "source ~/px4_ros_com_ws/install/local_setup.bash" >> ~/.bashrc
+
+# Set working directory to PX4-Autopilot (user can change this if needed)
+WORKDIR /PX4-Autopilot
+
 # Set default command (runs when container starts)
-CMD ["bash"]
+# Sources ROS environments, starts MicroXRCEAgent in background, then starts tmux
+CMD ["/bin/bash", "-c", "source /opt/ros/jazzy/setup.bash && source ~/px4_ros_uxrce_dds_ws/install/local_setup.bash && source ~/px4_ros_com_ws/install/local_setup.bash && MicroXRCEAgent udp4 -p 8888 & exec tmux"]
 
