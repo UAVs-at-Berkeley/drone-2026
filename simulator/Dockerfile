@@ -50,26 +50,33 @@ RUN chown -R qgcuser:qgcuser /PX4-Autopilot
 ARG TARGETARCH
 ARG QGC_VERSION=v5.0.0
 
-# Detect architecture, download and extract the correct QGroundControl AppImage
-# QGroundControl AppImages are available for x86_64 (amd64) and aarch64 (arm64)
-# We extract the AppImage during build to avoid FUSE requirements at runtime
+# Detect architecture and install QGroundControl
+# For x86_64: Use AppImage (extracted to avoid FUSE requirements)
+# For arm64: Use flatpak (AppImage not available)
 RUN ARCH=${TARGETARCH:-$(dpkg --print-architecture)} && \
     if [ "$ARCH" = "amd64" ] || [ "$ARCH" = "x86_64" ]; then \
-        QGC_ARCH="x86_64"; \
+        echo "Installing QGroundControl for x86_64 via AppImage..." && \
+        wget -q https://d176tv9ibo4jno.cloudfront.net/latest/QGroundControl-x86_64.AppImage -O /tmp/QGroundControl.AppImage && \
+        chmod +x /tmp/QGroundControl.AppImage && \
+        cd /opt && \
+        /tmp/QGroundControl.AppImage --appimage-extract && \
+        mv squashfs-root qgroundcontrol && \
+        rm /tmp/QGroundControl.AppImage && \
+        ln -s /opt/qgroundcontrol/AppRun /usr/local/bin/qgroundcontrol && \
+        chown -R qgcuser:qgcuser /opt/qgroundcontrol && \
+        echo "QGroundControl extracted successfully to /opt/qgroundcontrol"; \
     elif [ "$ARCH" = "arm64" ] || [ "$ARCH" = "aarch64" ]; then \
-        QGC_ARCH="arm64"; \
+        echo "Installing QGroundControl for arm64 via flatpak..." && \
+        apt-get update && apt-get install -y flatpak && \
+        rm -rf /var/lib/apt/lists/* && \
+        flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo && \
+        flatpak install -y --noninteractive org.qgroundcontrol.qgroundcontrol && \
+        echo '#!/bin/bash\nflatpak run org.qgroundcontrol.qgroundcontrol "$@"' > /usr/local/bin/qgroundcontrol && \
+        chmod +x /usr/local/bin/qgroundcontrol && \
+        echo "QGroundControl installed successfully via flatpak"; \
     else \
         echo "Unsupported architecture: $ARCH" && exit 1; \
-    fi && \
-    wget -q https://d176tv9ibo4jno.cloudfront.net/latest/QGroundControl-${QGC_ARCH}.AppImage -O /tmp/QGroundControl.AppImage && \
-    chmod +x /tmp/QGroundControl.AppImage && \
-    cd /opt && \
-    /tmp/QGroundControl.AppImage --appimage-extract && \
-    mv squashfs-root qgroundcontrol && \
-    rm /tmp/QGroundControl.AppImage && \
-    ln -s /opt/qgroundcontrol/AppRun /usr/local/bin/qgroundcontrol && \
-    chown -R qgcuser:qgcuser /opt/qgroundcontrol && \
-    echo "QGroundControl extracted successfully to /opt/qgroundcontrol"
+    fi
 
 
 # Update locale to English (US) and install ROS2 dependencies
