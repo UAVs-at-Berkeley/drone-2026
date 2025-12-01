@@ -69,11 +69,17 @@ RUN ARCH=${TARGETARCH:-$(dpkg --print-architecture)} && \
         echo "Installing QGroundControl for arm64 via flatpak..." && \
         apt-get update && apt-get install -y flatpak && \
         rm -rf /var/lib/apt/lists/* && \
+        flatpak remote-add --if-not-exists --system flathub https://flathub.org/repo/flathub.flatpakrepo || \
         flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo && \
-        flatpak install -y --noninteractive org.qgroundcontrol.qgroundcontrol && \
-        echo '#!/bin/bash\nflatpak run org.qgroundcontrol.qgroundcontrol "$@"' > /usr/local/bin/qgroundcontrol && \
+        flatpak install -y --system flathub org.mavlink.qgroundcontrol || \
+        flatpak install -y flathub org.mavlink.qgroundcontrol && \
+        printf '#!/bin/bash\nflatpak run org.mavlink.qgroundcontrol "$@"\n' > /usr/local/bin/qgroundcontrol && \
         chmod +x /usr/local/bin/qgroundcontrol && \
-        echo "QGroundControl installed successfully via flatpak"; \
+        if flatpak list | grep -q org.mavlink.qgroundcontrol; then \
+            echo "QGroundControl installed successfully via flatpak"; \
+        else \
+            echo "ERROR: QGroundControl flatpak installation failed!" && exit 1; \
+        fi; \
     else \
         echo "Unsupported architecture: $ARCH" && exit 1; \
     fi
