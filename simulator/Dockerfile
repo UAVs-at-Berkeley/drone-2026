@@ -67,13 +67,23 @@ RUN ARCH=${TARGETARCH:-$(dpkg --print-architecture)} && \
         echo "QGroundControl extracted successfully to /opt/qgroundcontrol"; \
     elif [ "$ARCH" = "arm64" ] || [ "$ARCH" = "aarch64" ]; then \
         echo "Installing QGroundControl for arm64 via flatpak..." && \
-        apt-get update && apt-get install -y flatpak && \
+        apt-get update && apt-get install -y flatpak dbus-x11 && \
         rm -rf /var/lib/apt/lists/* && \
         flatpak remote-add --if-not-exists --system flathub https://flathub.org/repo/flathub.flatpakrepo || \
         flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo && \
         flatpak install -y --system flathub org.mavlink.qgroundcontrol || \
         flatpak install -y flathub org.mavlink.qgroundcontrol && \
-        printf '#!/bin/bash\nflatpak run org.mavlink.qgroundcontrol "$@"\n' > /usr/local/bin/qgroundcontrol && \
+        printf '#!/bin/bash\n\
+# Start dbus if not running (needed for flatpak)\n\
+if [ ! -S /var/run/dbus/system_bus_socket ] && [ -z "$DBUS_SESSION_BUS_ADDRESS" ]; then \
+    mkdir -p /var/run/dbus && \
+    dbus-daemon --system --fork 2>/dev/null || true; \
+fi\n\
+# Set environment variables for flatpak\n\
+export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/tmp/runtime-$(whoami)}\n\
+mkdir -p "$XDG_RUNTIME_DIR"\n\
+# Run QGroundControl via flatpak\n\
+flatpak run --filesystem=home org.mavlink.qgroundcontrol "$@"\n' > /usr/local/bin/qgroundcontrol && \
         chmod +x /usr/local/bin/qgroundcontrol && \
         if flatpak list | grep -q org.mavlink.qgroundcontrol; then \
             echo "QGroundControl installed successfully via flatpak"; \
