@@ -22,11 +22,21 @@ How to download/install run the simulator package docker image:
 
     docker run --rm -it -e DISPLAY=host.docker.internal:0 simulator
 
+    or if you're on mac/arm64 architecture, run:
+
+    docker run --rm -it \
+    -e DISPLAY=host.docker.internal:0 \
+    -p 14540:14540/udp \
+    -p 14550:14550/udp \
+    simulator
+
     The --rm flag means "clean up afterward, don't leave the container sitting there"
     The -it flag means "in an interactive terminal"
     The -e flag means "with environment variable"; we want to set the DISPLAY to connect to your device so you can see the Gazebo simulator window and interact with it
 
     5a: For the display to work, you need to have an "X" server running on your computer. On Windows, you can do this by downloading XLaunch and starting up a server. On Mac, this is typically accomplished with XQuartz. THIS IS IMPORTANT, otherwise, the GUI's will never show up.
+
+    5b: If you're on arm64 architecture (most recent Macs), you'll need to run QGroundControl locally on your device outside of the docker container, because there's no good way of downloading QGroundControl for arm64 Linux.
 
 6. Once in the container, you should see a bash terminal. you can try typing "ls" or "help", these should work as expected. You are now inside a virtual environment running Ubuntu.
 
