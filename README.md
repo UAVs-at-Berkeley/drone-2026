@@ -24,11 +24,7 @@ How to download/install run the simulator package docker image:
 
     or if you're on mac/arm64 architecture, run:
 
-    docker run --rm -it \
-    -e DISPLAY=host.docker.internal:0 \
-    -p 14540:14540/udp \
-    -p 14550:14550/udp \
-    simulator
+    docker run --rm -it -e DISPLAY=host.docker.internal:0 -p 14540:14540/udp -p 14550:14550/udp simulator
 
     The --rm flag means "clean up afterward, don't leave the container sitting there"
     The -it flag means "in an interactive terminal"
