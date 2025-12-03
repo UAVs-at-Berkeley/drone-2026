@@ -10,8 +10,6 @@ How to download/install run the simulator package docker image:
 
     docker build -t simulator .
 
-    (or on Mac: docker build --platform linux/arm64 -t simulator .)
-
     4a: this is a CHONKER. Expect it to take around 30 min - 1 hr. to build, and takes about
         2 GB for the Ubuntu OS
         13 GB for PX4 + SITL + dependencies
