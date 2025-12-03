@@ -52,7 +52,7 @@ ARG QGC_VERSION=v5.0.0
 
 # Detect architecture and install QGroundControl
 # For x86_64: Use AppImage (extracted to avoid FUSE requirements)
-# For arm64: Use flatpak (AppImage not available)
+# For arm64: Build from source
 RUN ARCH=${TARGETARCH:-$(dpkg --print-architecture)} && \
     if [ "$ARCH" = "amd64" ] || [ "$ARCH" = "x86_64" ]; then \
         echo "Installing QGroundControl for x86_64 via AppImage..." && \
