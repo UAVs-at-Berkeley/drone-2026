@@ -22,56 +22,17 @@ RUN apt-get update && apt-get install -y \
     vim \
     && rm -rf /var/lib/apt/lists/*
 
+# Create a non-root user for QGroundControl (QGC refuses to run as root)
+# Create user early so we can use it during the build process
+RUN useradd -m -s /bin/bash qgcuser
+
 # Set build arguments for architecture detection and QGC version
 ARG TARGETARCH
 ARG QGC_VERSION=v5.0.0
 
-# Install Qt 6 and build dependencies for QGroundControl (needed for arm64 build)
-# These are installed early so they're available for both architectures
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    cmake \
-    ninja-build \
-    qt6-base-dev \
-    qt6-base-dev-tools \
-    qt6-multimedia-dev \
-    qt6-positioning-dev \
-    qt6-tools-dev \
-    qt6-declarative-dev \
-    qt6-svg-dev \
-    qt6-serialport-dev \
-    qt6-quick3d-dev \
-    qt6-quickcontrols2-dev \
-    qt6-shadertools-dev \
-    qt6-3d-dev \
-    qt6-connectivity-dev \
-    qt6-sensors-dev \
-    qt6-websockets-dev \
-    qt6-webchannel-dev \
-    qt6-webengine-dev \
-    qt6-networkauth-dev \
-    qt6-remoteobjects-dev \
-    qt6-scxml-dev \
-    qt6-lottie-dev \
-    qt6-imageformats-dev \
-    qt6-virtualkeyboard-dev \
-    qt6-datavisualization-dev \
-    qt6-charts-dev \
-    qt6-quicktimeline-dev \
-    qt6-quick3dphysics-dev \
-    qt6-quick3dassetimport-dev \
-    qt6-quick3dparticles-dev \
-    qt6-quick3deffects-dev \
-    qt6-quick3dextras-dev \
-    libsdl2-dev \
-    speech-dispatcher \
-    libudev-dev \
-    patchelf \
-    && rm -rf /var/lib/apt/lists/*
-
 # Detect architecture and install QGroundControl
 # For x86_64: Use AppImage (extracted to avoid FUSE requirements)
-# For arm64: Build from source
+# For arm64: Build from source using official QGroundControl build process
 RUN ARCH=${TARGETARCH:-$(dpkg --print-architecture)} && \
     if [ "$ARCH" = "amd64" ] || [ "$ARCH" = "x86_64" ]; then \
         echo "Installing QGroundControl for x86_64 via AppImage..." && \
@@ -85,29 +46,57 @@ RUN ARCH=${TARGETARCH:-$(dpkg --print-architecture)} && \
         chown -R qgcuser:qgcuser /opt/qgroundcontrol && \
         echo "QGroundControl extracted successfully to /opt/qgroundcontrol"; \
     elif [ "$ARCH" = "arm64" ] || [ "$ARCH" = "aarch64" ]; then \
-        echo "Building QGroundControl from source for arm64..." && \
+        echo "Building QGroundControl from source for arm64 using official build process..." && \
+        echo "Installing build dependencies..." && \
+        apt-get update && apt-get install -y --no-install-recommends \
+            ninja-build \
+            cmake \
+            unzip \
+            && rm -rf /var/lib/apt/lists/* && \
+        echo "Downloading and running QGroundControl's official setup scripts..." && \
+        mkdir -p /tmp/qt && \
+        wget -q https://raw.githubusercontent.com/mavlink/qgroundcontrol/master/tools/setup/install-dependencies-debian.sh -O /tmp/qt/install-dependencies-debian.sh && \
+        wget -q https://raw.githubusercontent.com/mavlink/qgroundcontrol/master/tools/setup/install-qt-debian.sh -O /tmp/qt/install-qt-debian.sh && \
+        chmod +x /tmp/qt/*.sh && \
+        /tmp/qt/install-dependencies-debian.sh && \
+        echo "Patching install script to use Qt 6.8.3 instead of latest..." && \
+        sed -i 's/6\.10\.1/6.8.3/g' /tmp/qt/install-qt-debian.sh && \
+        sed -i 's/6\.10/6.8/g' /tmp/qt/install-qt-debian.sh || true && \
+        /tmp/qt/install-qt-debian.sh && \
+        rm -rf /tmp/qt && \
+        echo "Finding Qt installation..." && \
+        QT_DIR=$(find /opt/Qt/6.8.3 -type d -name "gcc_*" 2>/dev/null | head -1) && \
+        if [ -z "$QT_DIR" ]; then \
+            QT_DIR=$(find /opt/Qt -type d \( -name "gcc_*" -o -name "gcc_arm64" \) 2>/dev/null | head -1); \
+        fi && \
+        if [ -z "$QT_DIR" ] || [ ! -d "$QT_DIR" ]; then \
+            echo "ERROR: Qt 6.8.3 installation not found! Found: $(ls -la /opt/Qt 2>/dev/null || echo 'nothing')" && exit 1; \
+        fi && \
+        echo "Using Qt installation at: $QT_DIR" && \
+        export QT_ROOT_DIR=$QT_DIR && \
+        export PATH=$QT_ROOT_DIR/bin:$PATH && \
+        echo "Cloning and building QGroundControl..." && \
         cd /tmp && \
         git clone --recursive --depth 1 --branch ${QGC_VERSION} https://github.com/mavlink/qgroundcontrol.git qgc-build && \
         cd qgc-build && \
         mkdir build && \
         cd build && \
-        cmake .. -G Ninja -DCMAKE_BUILD_TYPE=Release && \
-        ninja && \
-        mkdir -p /opt/qgroundcontrol && \
-        cp -r staging/* /opt/qgroundcontrol/ && \
+        $QT_ROOT_DIR/bin/qt-cmake -S .. -B . -G Ninja -DCMAKE_BUILD_TYPE=Release && \
+        cmake --build . --target all --parallel && \
+        cmake --install . --config Release --prefix /opt/qgroundcontrol && \
         cd / && \
         rm -rf /tmp/qgc-build && \
-        ln -s /opt/qgroundcontrol/QGroundControl /usr/local/bin/qgroundcontrol && \
+        ln -s /opt/qgroundcontrol/bin/QGroundControl /usr/local/bin/qgroundcontrol || \
+        ln -s /opt/qgroundcontrol/QGroundControl /usr/local/bin/qgroundcontrol || \
+        (find /opt/qgroundcontrol -name "QGroundControl" -type f -executable | head -1 | xargs -I {} ln -s {} /usr/local/bin/qgroundcontrol) && \
         chown -R qgcuser:qgcuser /opt/qgroundcontrol && \
         echo "QGroundControl built and installed successfully to /opt/qgroundcontrol"; \
     else \
         echo "Unsupported architecture: $ARCH" && exit 1; \
     fi
 
-
-# Create a non-root user for QGroundControl (QGC refuses to run as root)
-RUN useradd -m -s /bin/bash qgcuser && \
-    chown -R qgcuser:qgcuser /opt/qgroundcontrol
+# Ensure qgcuser owns QGroundControl installation (if it exists)
+RUN if [ -d /opt/qgroundcontrol ]; then chown -R qgcuser:qgcuser /opt/qgroundcontrol; fi
 
 # Set working directory to the user's home directory
 WORKDIR /home/qgcuser

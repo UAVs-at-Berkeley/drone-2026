@@ -79,13 +79,20 @@ RUN ARCH=${TARGETARCH:-$(dpkg --print-architecture)} && \
         wget -q https://raw.githubusercontent.com/mavlink/qgroundcontrol/master/tools/setup/install-qt-debian.sh -O /tmp/qt/install-qt-debian.sh && \
         chmod +x /tmp/qt/*.sh && \
         /tmp/qt/install-dependencies-debian.sh && \
+        echo "Patching install script to use Qt 6.8.3 instead of latest..." && \
+        sed -i 's/6\.10\.1/6.8.3/g' /tmp/qt/install-qt-debian.sh && \
+        sed -i 's/6\.10/6.8/g' /tmp/qt/install-qt-debian.sh || true && \
         /tmp/qt/install-qt-debian.sh && \
         rm -rf /tmp/qt && \
         echo "Finding Qt installation..." && \
-        QT_DIR=$(find /opt/Qt -type d \( -name "gcc_*" -o -name "gcc_arm64" \) | head -1) && \
+        QT_DIR=$(find /opt/Qt/6.8.3 -type d -name "gcc_*" 2>/dev/null | head -1) && \
         if [ -z "$QT_DIR" ]; then \
-            QT_DIR="/opt/Qt/6.10.1/gcc_64"; \
+            QT_DIR=$(find /opt/Qt -type d \( -name "gcc_*" -o -name "gcc_arm64" \) 2>/dev/null | head -1); \
         fi && \
+        if [ -z "$QT_DIR" ] || [ ! -d "$QT_DIR" ]; then \
+            echo "ERROR: Qt 6.8.3 installation not found! Found: $(ls -la /opt/Qt 2>/dev/null || echo 'nothing')" && exit 1; \
+        fi && \
+        echo "Using Qt installation at: $QT_DIR" && \
         export QT_ROOT_DIR=$QT_DIR && \
         export PATH=$QT_ROOT_DIR/bin:$PATH && \
         echo "Cloning and building QGroundControl..." && \
