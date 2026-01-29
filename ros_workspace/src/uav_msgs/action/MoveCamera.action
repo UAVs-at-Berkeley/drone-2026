@@ -1,0 +1,15 @@
+# Goal: point gimbal (degrees)
+float64 pitch_deg
+float64 yaw_deg
+float64 roll_deg
+
+---
+# Result
+bool success
+string message
+
+---
+# Feedback
+float64 current_pitch_deg
+float64 current_yaw_deg
+bool moving

@@ -1,0 +1,19 @@
+# Goal: simple "go" (empty = start mapping routine)
+uint8 placeholder
+
+---
+# Result
+bool success
+sensor_msgs/Image stitched_map
+string message
+
+---
+# Feedback: requests to Central Command (move drone / camera)
+float64 requested_latitude_deg
+float64 requested_longitude_deg
+float64 requested_altitude_m
+float64 requested_yaw_deg
+bool request_camera_move
+float64 requested_camera_pitch_deg
+float64 requested_camera_yaw_deg
+string phase

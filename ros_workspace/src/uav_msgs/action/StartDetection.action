@@ -1,0 +1,24 @@
+# Goal: simple "go" (empty = start detection/airdrop routine)
+uint8 placeholder
+
+---
+# Result
+bool success
+float64 final_target_latitude_deg
+float64 final_target_longitude_deg
+float64 final_confidence
+string message
+
+---
+# Feedback: requests to Central Command (move, camera, airdrop)
+float64 requested_latitude_deg
+float64 requested_longitude_deg
+float64 requested_altitude_m
+float64 requested_yaw_deg
+bool request_camera_move
+float64 requested_camera_pitch_deg
+float64 requested_camera_yaw_deg
+bool request_airdrop
+float64 estimated_target_latitude_deg
+float64 estimated_target_longitude_deg
+float64 confidence

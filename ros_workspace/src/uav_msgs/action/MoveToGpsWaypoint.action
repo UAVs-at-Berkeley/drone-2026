@@ -1,0 +1,15 @@
+# Goal: fly to this GPS waypoint
+float64 latitude_deg
+float64 longitude_deg
+float64 altitude_m
+float64 yaw_deg
+
+---
+# Result
+bool success
+string message
+
+---
+# Feedback (progress; live position on /movement/current_pose)
+float64 distance_to_target_m
+bool in_failsafe
