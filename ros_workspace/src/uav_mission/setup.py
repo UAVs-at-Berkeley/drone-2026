@@ -11,7 +11,7 @@ setup(
         ("share/" + package_name, ["package.xml"]),
         ("share/" + package_name + "/launch", ["launch/bringup.launch.py", "launch/waypoint_only.launch.py"]),
     ],
-    install_requires=["setuptools"],
+    install_requires=["setuptools", "opencv-python"],
     zip_safe=True,
     maintainer="UAV Team",
     maintainer_email="team@example.com",
