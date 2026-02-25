@@ -3,15 +3,18 @@
 <package format="3">
   <name>uav_mission</name>
   <version>0.1.0</version>
-  <description>SUAS drone mission nodes: Central Command, Movement, Mapping, Detection, Camera</description>
+  <description>SUAS drone mission nodes: Central Command, Mapping, Detection, Camera, Waypoint</description>
   <maintainer email="team@example.com">UAV Team</maintainer>
   <license>MIT</license>
 
   <depend>rclpy</depend>
   <depend>uav_msgs</depend>
+  <depend>px4_msgs</depend>
   <depend>sensor_msgs</depend>
+  <depend>cv_bridge</depend>
   <depend>geometry_msgs</depend>
   <depend>std_msgs</depend>
+  <depend>px4_msgs</depend>
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
 

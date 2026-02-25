@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Launch only Central Command and Movement (waypoint loop slice).
+Launch Central Command and Waypoint nodes only.
 
 Use for integration when Mapping/Detection/Camera are not ready.
 
@@ -26,8 +26,8 @@ def generate_launch_description():
         ),
         Node(
             package="uav_mission",
-            executable="movement_node",
-            name="movement_node",
+            executable="waypoint_node",
+            name="waypoint_node",
             output="screen",
             parameters=[{"use_sim_time": LaunchConfiguration("use_sim_time")}],
         ),

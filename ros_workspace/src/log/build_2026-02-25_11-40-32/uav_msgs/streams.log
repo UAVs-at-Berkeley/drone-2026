@@ -1,0 +1,482 @@
+[0.024s] Invoking command in '/home/pi/drone_workspace/drone-2026/ros_workspace/src/build/uav_msgs': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/opt/ros/jazzy DEBUGINFOD_URLS=https://debuginfod.ubuntu.com /usr/bin/cmake /home/pi/drone_workspace/drone-2026/ros_workspace/src/uav_msgs -DCMAKE_INSTALL_PREFIX=/home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs
+[0.151s] -- The C compiler identification is GNU 13.3.0
+[0.281s] -- The CXX compiler identification is GNU 13.3.0
+[0.308s] -- Detecting C compiler ABI info
+[0.494s] -- Detecting C compiler ABI info - done
+[0.509s] -- Check for working C compiler: /usr/bin/cc - skipped
+[0.509s] -- Detecting C compile features
+[0.510s] -- Detecting C compile features - done
+[0.524s] -- Detecting CXX compiler ABI info
+[0.729s] -- Detecting CXX compiler ABI info - done
+[0.744s] -- Check for working CXX compiler: /usr/bin/c++ - skipped
+[0.744s] -- Detecting CXX compile features
+[0.745s] -- Detecting CXX compile features - done
+[0.753s] -- Found ament_cmake: 2.5.5 (/opt/ros/jazzy/share/ament_cmake/cmake)
+[1.028s] -- Found Python3: /usr/bin/python3 (found version "3.12.3") found components: Interpreter 
+[1.304s] -- Found rosidl_default_generators: 1.6.0 (/opt/ros/jazzy/share/rosidl_default_generators/cmake)
+[1.318s] -- Using all available rosidl_typesupport_c: rosidl_typesupport_fastrtps_c;rosidl_typesupport_introspection_c
+[1.412s] -- Using all available rosidl_typesupport_cpp: rosidl_typesupport_fastrtps_cpp;rosidl_typesupport_introspection_cpp
+[1.489s] -- Found rosidl_adapter: 4.6.7 (/opt/ros/jazzy/share/rosidl_adapter/cmake)
+[1.498s] -- Found sensor_msgs: 5.3.6 (/opt/ros/jazzy/share/sensor_msgs/cmake)
+[2.870s] -- Found ament_cmake_ros: 0.12.0 (/opt/ros/jazzy/share/ament_cmake_ros/cmake)
+[3.719s] -- Using all available rosidl_typesupport_c: rosidl_typesupport_fastrtps_c;rosidl_typesupport_introspection_c
+[4.997s] -- Using all available rosidl_typesupport_cpp: rosidl_typesupport_fastrtps_cpp;rosidl_typesupport_introspection_cpp
+[5.003s] -- Found python_cmake_module: 0.11.1 (/opt/ros/jazzy/share/python_cmake_module/cmake)
+[5.263s] -- Found PythonExtra: /usr/bin/python3  
+[6.107s] -- Found Python3: /usr/bin/python3 (found version "3.12.3") found components: Interpreter Development NumPy Development.Module Development.Embed 
+[6.252s] -- Configuring done (6.2s)
+[6.358s] -- Generating done (0.1s)
+[6.382s] -- Build files have been written to: /home/pi/drone_workspace/drone-2026/ros_workspace/src/build/uav_msgs
+[6.416s] Invoked command in '/home/pi/drone_workspace/drone-2026/ros_workspace/src/build/uav_msgs' returned '0': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/opt/ros/jazzy DEBUGINFOD_URLS=https://debuginfod.ubuntu.com /usr/bin/cmake /home/pi/drone_workspace/drone-2026/ros_workspace/src/uav_msgs -DCMAKE_INSTALL_PREFIX=/home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs
+[6.419s] Invoking command in '/home/pi/drone_workspace/drone-2026/ros_workspace/src/build/uav_msgs': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/opt/ros/jazzy DEBUGINFOD_URLS=https://debuginfod.ubuntu.com /usr/bin/cmake --build /home/pi/drone_workspace/drone-2026/ros_workspace/src/build/uav_msgs -- -j4 -l4
+[6.514s] [  1%] [34m[1mGenerating type hashes for ROS interfaces[0m
+[6.532s] [  1%] Built target ament_cmake_python_copy_uav_msgs
+[6.950s] running egg_info
+[6.952s] creating uav_msgs.egg-info
+[6.983s] writing uav_msgs.egg-info/PKG-INFO
+[6.983s] writing dependency_links to uav_msgs.egg-info/dependency_links.txt
+[6.983s] writing top-level names to uav_msgs.egg-info/top_level.txt
+[6.983s] writing manifest file 'uav_msgs.egg-info/SOURCES.txt'
+[7.081s] reading manifest file 'uav_msgs.egg-info/SOURCES.txt'
+[7.082s] writing manifest file 'uav_msgs.egg-info/SOURCES.txt'
+[7.214s] [  1%] Built target ament_cmake_python_build_uav_msgs_egg
+[7.402s] [  1%] Built target uav_msgs__rosidl_generator_type_description
+[7.424s] [  2%] [34m[1mGenerating C code for ROS interfaces[0m
+[7.448s] [  2%] [34m[1mGenerating C++ code for ROS interfaces[0m
+[9.937s] [  2%] Built target uav_msgs__cpp
+[10.313s] [  4%] [32mBuilding C object CMakeFiles/uav_msgs__rosidl_generator_c.dir/rosidl_generator_c/uav_msgs/msg/detail/mission_status__type_support.c.o[0m
+[10.313s] [  4%] [32mBuilding C object CMakeFiles/uav_msgs__rosidl_generator_c.dir/rosidl_generator_c/uav_msgs/msg/detail/mission_status__functions.c.o[0m
+[10.320s] [  5%] [32mBuilding C object CMakeFiles/uav_msgs__rosidl_generator_c.dir/rosidl_generator_c/uav_msgs/msg/detail/mission_status__description.c.o[0m
+[10.333s] [  6%] [32mBuilding C object CMakeFiles/uav_msgs__rosidl_generator_c.dir/rosidl_generator_c/uav_msgs/msg/detail/geo_referenced_image__description.c.o[0m
+[10.441s] [  7%] [32mBuilding C object CMakeFiles/uav_msgs__rosidl_generator_c.dir/rosidl_generator_c/uav_msgs/msg/detail/geo_referenced_image__functions.c.o[0m
+[10.455s] [  8%] [32mBuilding C object CMakeFiles/uav_msgs__rosidl_generator_c.dir/rosidl_generator_c/uav_msgs/msg/detail/geo_referenced_image__type_support.c.o[0m
+[10.478s] [  9%] [32mBuilding C object CMakeFiles/uav_msgs__rosidl_generator_c.dir/rosidl_generator_c/uav_msgs/msg/detail/detection__description.c.o[0m
+[10.503s] [ 10%] [32mBuilding C object CMakeFiles/uav_msgs__rosidl_generator_c.dir/rosidl_generator_c/uav_msgs/msg/detail/detection__functions.c.o[0m
+[10.571s] [ 11%] [32mBuilding C object CMakeFiles/uav_msgs__rosidl_generator_c.dir/rosidl_generator_c/uav_msgs/msg/detail/detection__type_support.c.o[0m
+[10.592s] [ 12%] [32mBuilding C object CMakeFiles/uav_msgs__rosidl_generator_c.dir/rosidl_generator_c/uav_msgs/msg/detail/detection_array__description.c.o[0m
+[10.593s] [ 13%] [32mBuilding C object CMakeFiles/uav_msgs__rosidl_generator_c.dir/rosidl_generator_c/uav_msgs/msg/detail/detection_array__functions.c.o[0m
+[10.658s] [ 14%] [32mBuilding C object CMakeFiles/uav_msgs__rosidl_generator_c.dir/rosidl_generator_c/uav_msgs/msg/detail/detection_array__type_support.c.o[0m
+[10.723s] [ 15%] [32mBuilding C object CMakeFiles/uav_msgs__rosidl_generator_c.dir/rosidl_generator_c/uav_msgs/action/detail/move_to_gps_waypoint__description.c.o[0m
+[10.744s] [ 16%] [32mBuilding C object CMakeFiles/uav_msgs__rosidl_generator_c.dir/rosidl_generator_c/uav_msgs/action/detail/move_to_gps_waypoint__functions.c.o[0m
+[10.754s] [ 17%] [32mBuilding C object CMakeFiles/uav_msgs__rosidl_generator_c.dir/rosidl_generator_c/uav_msgs/action/detail/move_to_gps_waypoint__type_support.c.o[0m
+[10.766s] [ 18%] [32mBuilding C object CMakeFiles/uav_msgs__rosidl_generator_c.dir/rosidl_generator_c/uav_msgs/action/detail/start_mapping__description.c.o[0m
+[10.929s] [ 19%] [32mBuilding C object CMakeFiles/uav_msgs__rosidl_generator_c.dir/rosidl_generator_c/uav_msgs/action/detail/start_mapping__functions.c.o[0m
+[11.016s] [ 20%] [32mBuilding C object CMakeFiles/uav_msgs__rosidl_generator_c.dir/rosidl_generator_c/uav_msgs/action/detail/start_mapping__type_support.c.o[0m
+[11.160s] [ 21%] [32mBuilding C object CMakeFiles/uav_msgs__rosidl_generator_c.dir/rosidl_generator_c/uav_msgs/action/detail/start_detection__description.c.o[0m
+[11.214s] [ 22%] [32mBuilding C object CMakeFiles/uav_msgs__rosidl_generator_c.dir/rosidl_generator_c/uav_msgs/action/detail/start_detection__functions.c.o[0m
+[11.287s] [ 23%] [32mBuilding C object CMakeFiles/uav_msgs__rosidl_generator_c.dir/rosidl_generator_c/uav_msgs/action/detail/start_detection__type_support.c.o[0m
+[11.441s] [ 24%] [32mBuilding C object CMakeFiles/uav_msgs__rosidl_generator_c.dir/rosidl_generator_c/uav_msgs/action/detail/move_camera__description.c.o[0m
+[11.479s] [ 25%] [32mBuilding C object CMakeFiles/uav_msgs__rosidl_generator_c.dir/rosidl_generator_c/uav_msgs/action/detail/move_camera__functions.c.o[0m
+[11.490s] [ 25%] [32mBuilding C object CMakeFiles/uav_msgs__rosidl_generator_c.dir/rosidl_generator_c/uav_msgs/action/detail/move_camera__type_support.c.o[0m
+[11.859s] [ 26%] [32m[1mLinking C shared library libuav_msgs__rosidl_generator_c.so[0m
+[11.982s] [ 26%] Built target uav_msgs__rosidl_generator_c
+[12.011s] [ 27%] [34m[1mGenerating C++ type support for eProsima Fast-RTPS[0m
+[12.011s] [ 28%] [34m[1mGenerating C type support dispatch for ROS interfaces[0m
+[12.019s] [ 28%] [34m[1mGenerating C introspection for ROS interfaces[0m
+[12.022s] [ 29%] [34m[1mGenerating C type support for eProsima Fast-RTPS[0m
+[14.275s] [ 30%] [32mBuilding CXX object CMakeFiles/uav_msgs__rosidl_typesupport_c.dir/rosidl_typesupport_c/uav_msgs/msg/mission_status__type_support.cpp.o[0m
+[14.477s] [ 31%] [32mBuilding CXX object CMakeFiles/uav_msgs__rosidl_typesupport_c.dir/rosidl_typesupport_c/uav_msgs/msg/geo_referenced_image__type_support.cpp.o[0m
+[14.646s] [ 32%] [32mBuilding CXX object CMakeFiles/uav_msgs__rosidl_typesupport_c.dir/rosidl_typesupport_c/uav_msgs/msg/detection__type_support.cpp.o[0m
+[14.788s] [ 33%] [32mBuilding CXX object CMakeFiles/uav_msgs__rosidl_typesupport_c.dir/rosidl_typesupport_c/uav_msgs/msg/detection_array__type_support.cpp.o[0m
+[14.930s] [ 34%] [32mBuilding CXX object CMakeFiles/uav_msgs__rosidl_typesupport_c.dir/rosidl_typesupport_c/uav_msgs/action/move_to_gps_waypoint__type_support.cpp.o[0m
+[14.978s] [ 35%] [32mBuilding C object CMakeFiles/uav_msgs__rosidl_typesupport_introspection_c.dir/rosidl_typesupport_introspection_c/uav_msgs/msg/detail/mission_status__type_support.c.o[0m
+[15.132s] [ 36%] [32mBuilding CXX object CMakeFiles/uav_msgs__rosidl_typesupport_c.dir/rosidl_typesupport_c/uav_msgs/action/start_mapping__type_support.cpp.o[0m
+[15.137s] [ 37%] [32mBuilding C object CMakeFiles/uav_msgs__rosidl_typesupport_introspection_c.dir/rosidl_typesupport_introspection_c/uav_msgs/msg/detail/geo_referenced_image__type_support.c.o[0m
+[15.308s] [ 38%] [32mBuilding CXX object CMakeFiles/uav_msgs__rosidl_typesupport_c.dir/rosidl_typesupport_c/uav_msgs/action/start_detection__type_support.cpp.o[0m
+[15.338s] [ 39%] [32mBuilding C object CMakeFiles/uav_msgs__rosidl_typesupport_introspection_c.dir/rosidl_typesupport_introspection_c/uav_msgs/msg/detail/detection__type_support.c.o[0m
+[15.423s] [ 40%] [32mBuilding CXX object CMakeFiles/uav_msgs__rosidl_typesupport_c.dir/rosidl_typesupport_c/uav_msgs/action/move_camera__type_support.cpp.o[0m
+[15.514s] [ 41%] [32mBuilding C object CMakeFiles/uav_msgs__rosidl_typesupport_introspection_c.dir/rosidl_typesupport_introspection_c/uav_msgs/msg/detail/detection_array__type_support.c.o[0m
+[15.618s] [ 42%] [32m[1mLinking CXX shared library libuav_msgs__rosidl_typesupport_c.so[0m
+[15.669s] [ 43%] [32mBuilding C object CMakeFiles/uav_msgs__rosidl_typesupport_introspection_c.dir/rosidl_typesupport_introspection_c/uav_msgs/action/detail/move_to_gps_waypoint__type_support.c.o[0m
+[15.764s] [ 43%] Built target uav_msgs__rosidl_typesupport_c
+[15.811s] [ 44%] [32mBuilding C object CMakeFiles/uav_msgs__rosidl_typesupport_introspection_c.dir/rosidl_typesupport_introspection_c/uav_msgs/action/detail/start_mapping__type_support.c.o[0m
+[15.922s] [ 45%] [34m[1mGenerating C++ introspection for ROS interfaces[0m
+[16.024s] [ 46%] [32mBuilding C object CMakeFiles/uav_msgs__rosidl_typesupport_introspection_c.dir/rosidl_typesupport_introspection_c/uav_msgs/action/detail/start_detection__type_support.c.o[0m
+[16.107s] [ 47%] [32mBuilding CXX object CMakeFiles/uav_msgs__rosidl_typesupport_fastrtps_c.dir/rosidl_typesupport_fastrtps_c/uav_msgs/msg/detail/mission_status__type_support_c.cpp.o[0m
+[16.223s] [ 48%] [32mBuilding C object CMakeFiles/uav_msgs__rosidl_typesupport_introspection_c.dir/rosidl_typesupport_introspection_c/uav_msgs/action/detail/move_camera__type_support.c.o[0m
+[16.384s] [ 49%] [32mBuilding CXX object CMakeFiles/uav_msgs__rosidl_typesupport_fastrtps_cpp.dir/rosidl_typesupport_fastrtps_cpp/uav_msgs/msg/detail/dds_fastrtps/mission_status__type_support.cpp.o[0m
+[16.427s] [ 50%] [32m[1mLinking C shared library libuav_msgs__rosidl_typesupport_introspection_c.so[0m
+[16.616s] [ 50%] Built target uav_msgs__rosidl_typesupport_introspection_c
+[16.668s] [ 51%] [34m[1mGenerating C++ type support dispatch for ROS interfaces[0m
+[17.363s] [ 52%] [32mBuilding CXX object CMakeFiles/uav_msgs__rosidl_typesupport_fastrtps_c.dir/rosidl_typesupport_fastrtps_c/uav_msgs/msg/detail/geo_referenced_image__type_support_c.cpp.o[0m
+[17.761s] [ 53%] [32mBuilding CXX object CMakeFiles/uav_msgs__rosidl_typesupport_fastrtps_cpp.dir/rosidl_typesupport_fastrtps_cpp/uav_msgs/msg/detail/dds_fastrtps/geo_referenced_image__type_support.cpp.o[0m
+[18.467s] [ 54%] [32mBuilding CXX object CMakeFiles/uav_msgs__rosidl_typesupport_fastrtps_c.dir/rosidl_typesupport_fastrtps_c/uav_msgs/msg/detail/detection__type_support_c.cpp.o[0m
+[18.836s] [ 55%] [32mBuilding CXX object CMakeFiles/uav_msgs__rosidl_typesupport_introspection_cpp.dir/rosidl_typesupport_introspection_cpp/uav_msgs/msg/detail/mission_status__type_support.cpp.o[0m
+[18.895s] [ 56%] [32mBuilding CXX object CMakeFiles/uav_msgs__rosidl_typesupport_cpp.dir/rosidl_typesupport_cpp/uav_msgs/msg/mission_status__type_support.cpp.o[0m
+[19.314s] [ 57%] [32mBuilding CXX object CMakeFiles/uav_msgs__rosidl_typesupport_fastrtps_cpp.dir/rosidl_typesupport_fastrtps_cpp/uav_msgs/msg/detail/dds_fastrtps/detection__type_support.cpp.o[0m
+[19.838s] [ 58%] [32mBuilding CXX object CMakeFiles/uav_msgs__rosidl_typesupport_fastrtps_c.dir/rosidl_typesupport_fastrtps_c/uav_msgs/msg/detail/detection_array__type_support_c.cpp.o[0m
+[19.864s] [ 59%] [32mBuilding CXX object CMakeFiles/uav_msgs__rosidl_typesupport_introspection_cpp.dir/rosidl_typesupport_introspection_cpp/uav_msgs/msg/detail/geo_referenced_image__type_support.cpp.o[0m
+[19.970s] [ 60%] [32mBuilding CXX object CMakeFiles/uav_msgs__rosidl_typesupport_cpp.dir/rosidl_typesupport_cpp/uav_msgs/msg/geo_referenced_image__type_support.cpp.o[0m
+[20.771s] [ 61%] [32mBuilding CXX object CMakeFiles/uav_msgs__rosidl_typesupport_introspection_cpp.dir/rosidl_typesupport_introspection_cpp/uav_msgs/msg/detail/detection__type_support.cpp.o[0m
+[20.962s] [ 62%] [32mBuilding CXX object CMakeFiles/uav_msgs__rosidl_typesupport_fastrtps_cpp.dir/rosidl_typesupport_fastrtps_cpp/uav_msgs/msg/detail/dds_fastrtps/detection_array__type_support.cpp.o[0m
+[21.015s] [ 63%] [32mBuilding CXX object CMakeFiles/uav_msgs__rosidl_typesupport_cpp.dir/rosidl_typesupport_cpp/uav_msgs/msg/detection__type_support.cpp.o[0m
+[21.224s] [ 64%] [32mBuilding CXX object CMakeFiles/uav_msgs__rosidl_typesupport_fastrtps_c.dir/rosidl_typesupport_fastrtps_c/uav_msgs/action/detail/move_to_gps_waypoint__type_support_c.cpp.o[0m
+[21.752s] [ 65%] [32mBuilding CXX object CMakeFiles/uav_msgs__rosidl_typesupport_introspection_cpp.dir/rosidl_typesupport_introspection_cpp/uav_msgs/msg/detail/detection_array__type_support.cpp.o[0m
+[22.099s] [ 65%] [32mBuilding CXX object CMakeFiles/uav_msgs__rosidl_typesupport_cpp.dir/rosidl_typesupport_cpp/uav_msgs/msg/detection_array__type_support.cpp.o[0m
+[22.759s] [ 66%] [32mBuilding CXX object CMakeFiles/uav_msgs__rosidl_typesupport_fastrtps_cpp.dir/rosidl_typesupport_fastrtps_cpp/uav_msgs/action/detail/dds_fastrtps/move_to_gps_waypoint__type_support.cpp.o[0m
+[22.782s] [ 67%] [32mBuilding CXX object CMakeFiles/uav_msgs__rosidl_typesupport_introspection_cpp.dir/rosidl_typesupport_introspection_cpp/uav_msgs/action/detail/move_to_gps_waypoint__type_support.cpp.o[0m
+[23.018s] [ 68%] [32mBuilding CXX object CMakeFiles/uav_msgs__rosidl_typesupport_cpp.dir/rosidl_typesupport_cpp/uav_msgs/action/move_to_gps_waypoint__type_support.cpp.o[0m
+[23.193s] [ 69%] [32mBuilding CXX object CMakeFiles/uav_msgs__rosidl_typesupport_fastrtps_c.dir/rosidl_typesupport_fastrtps_c/uav_msgs/action/detail/start_mapping__type_support_c.cpp.o[0m
+[25.043s] [ 70%] [32mBuilding CXX object CMakeFiles/uav_msgs__rosidl_typesupport_fastrtps_c.dir/rosidl_typesupport_fastrtps_c/uav_msgs/action/detail/start_detection__type_support_c.cpp.o[0m
+[25.458s] [ 71%] [32mBuilding CXX object CMakeFiles/uav_msgs__rosidl_typesupport_cpp.dir/rosidl_typesupport_cpp/uav_msgs/action/start_mapping__type_support.cpp.o[0m
+[25.860s] [ 72%] [32mBuilding CXX object CMakeFiles/uav_msgs__rosidl_typesupport_introspection_cpp.dir/rosidl_typesupport_introspection_cpp/uav_msgs/action/detail/start_mapping__type_support.cpp.o[0m
+[26.364s] [ 73%] [32mBuilding CXX object CMakeFiles/uav_msgs__rosidl_typesupport_fastrtps_cpp.dir/rosidl_typesupport_fastrtps_cpp/uav_msgs/action/detail/dds_fastrtps/start_mapping__type_support.cpp.o[0m
+[26.834s] [ 74%] [32mBuilding CXX object CMakeFiles/uav_msgs__rosidl_typesupport_fastrtps_c.dir/rosidl_typesupport_fastrtps_c/uav_msgs/action/detail/move_camera__type_support_c.cpp.o[0m
+[28.148s] [ 75%] [32mBuilding CXX object CMakeFiles/uav_msgs__rosidl_typesupport_introspection_cpp.dir/rosidl_typesupport_introspection_cpp/uav_msgs/action/detail/start_detection__type_support.cpp.o[0m
+[28.757s] [ 76%] [32mBuilding CXX object CMakeFiles/uav_msgs__rosidl_typesupport_cpp.dir/rosidl_typesupport_cpp/uav_msgs/action/start_detection__type_support.cpp.o[0m
+[28.860s] [ 77%] [32m[1mLinking CXX shared library libuav_msgs__rosidl_typesupport_fastrtps_c.so[0m
+[29.511s] [ 77%] Built target uav_msgs__rosidl_typesupport_fastrtps_c
+[29.557s] [ 78%] [32mBuilding CXX object CMakeFiles/uav_msgs__rosidl_typesupport_cpp.dir/rosidl_typesupport_cpp/uav_msgs/action/move_camera__type_support.cpp.o[0m
+[29.697s] [ 79%] [32mBuilding CXX object CMakeFiles/uav_msgs__rosidl_typesupport_fastrtps_cpp.dir/rosidl_typesupport_fastrtps_cpp/uav_msgs/action/detail/dds_fastrtps/start_detection__type_support.cpp.o[0m
+[30.694s] [ 80%] [32mBuilding CXX object CMakeFiles/uav_msgs__rosidl_typesupport_introspection_cpp.dir/rosidl_typesupport_introspection_cpp/uav_msgs/action/detail/move_camera__type_support.cpp.o[0m
+[31.700s] [ 81%] [32mBuilding CXX object CMakeFiles/uav_msgs__rosidl_typesupport_fastrtps_cpp.dir/rosidl_typesupport_fastrtps_cpp/uav_msgs/action/detail/dds_fastrtps/move_camera__type_support.cpp.o[0m
+[31.920s] [ 82%] [32m[1mLinking CXX shared library libuav_msgs__rosidl_typesupport_cpp.so[0m
+[32.417s] [ 82%] Built target uav_msgs__rosidl_typesupport_cpp
+[33.102s] [ 83%] [32m[1mLinking CXX shared library libuav_msgs__rosidl_typesupport_introspection_cpp.so[0m
+[33.418s] [ 83%] Built target uav_msgs__rosidl_typesupport_introspection_cpp
+[34.056s] [ 84%] [32m[1mLinking CXX shared library libuav_msgs__rosidl_typesupport_fastrtps_cpp.so[0m
+[34.304s] [ 84%] Built target uav_msgs__rosidl_typesupport_fastrtps_cpp
+[34.340s] [ 84%] Built target uav_msgs
+[34.375s] [ 85%] [34m[1mGenerating Python code for ROS interfaces[0m
+[38.115s] [ 85%] Built target uav_msgs__py
+[38.156s] [ 86%] [32mBuilding C object CMakeFiles/uav_msgs__rosidl_generator_py.dir/rosidl_generator_py/uav_msgs/msg/_mission_status_s.c.o[0m
+[38.156s] [ 87%] [32mBuilding C object CMakeFiles/uav_msgs__rosidl_generator_py.dir/rosidl_generator_py/uav_msgs/msg/_detection_array_s.c.o[0m
+[38.163s] [ 88%] [32mBuilding C object CMakeFiles/uav_msgs__rosidl_generator_py.dir/rosidl_generator_py/uav_msgs/msg/_geo_referenced_image_s.c.o[0m
+[38.167s] [ 89%] [32mBuilding C object CMakeFiles/uav_msgs__rosidl_generator_py.dir/rosidl_generator_py/uav_msgs/msg/_detection_s.c.o[0m
+[38.565s] [ 91%] [32mBuilding C object CMakeFiles/uav_msgs__rosidl_generator_py.dir/rosidl_generator_py/uav_msgs/action/_move_to_gps_waypoint_s.c.o[0m
+[38.566s] [ 91%] [32mBuilding C object CMakeFiles/uav_msgs__rosidl_generator_py.dir/rosidl_generator_py/uav_msgs/action/_start_mapping_s.c.o[0m
+[38.610s] [ 92%] [32mBuilding C object CMakeFiles/uav_msgs__rosidl_generator_py.dir/rosidl_generator_py/uav_msgs/action/_move_camera_s.c.o[0m
+[38.628s] [ 93%] [32mBuilding C object CMakeFiles/uav_msgs__rosidl_generator_py.dir/rosidl_generator_py/uav_msgs/action/_start_detection_s.c.o[0m
+[39.284s] [ 94%] [32m[1mLinking C shared library libuav_msgs__rosidl_generator_py.so[0m
+[39.398s] [ 94%] Built target uav_msgs__rosidl_generator_py
+[39.439s] [ 97%] [32mBuilding C object CMakeFiles/uav_msgs_s__rosidl_typesupport_introspection_c.dir/rosidl_generator_py/uav_msgs/_uav_msgs_s.ep.rosidl_typesupport_introspection_c.c.o[0m
+[39.440s] [ 97%] [32mBuilding C object CMakeFiles/uav_msgs_s__rosidl_typesupport_c.dir/rosidl_generator_py/uav_msgs/_uav_msgs_s.ep.rosidl_typesupport_c.c.o[0m
+[39.440s] [ 97%] [32mBuilding C object CMakeFiles/uav_msgs_s__rosidl_typesupport_fastrtps_c.dir/rosidl_generator_py/uav_msgs/_uav_msgs_s.ep.rosidl_typesupport_fastrtps_c.c.o[0m
+[40.000s] [ 98%] [32m[1mLinking C shared module rosidl_generator_py/uav_msgs/uav_msgs_s__rosidl_typesupport_c.so[0m
+[40.000s] [ 99%] [32m[1mLinking C shared module rosidl_generator_py/uav_msgs/uav_msgs_s__rosidl_typesupport_introspection_c.so[0m
+[40.010s] [100%] [32m[1mLinking C shared module rosidl_generator_py/uav_msgs/uav_msgs_s__rosidl_typesupport_fastrtps_c.so[0m
+[40.093s] [100%] Built target uav_msgs_s__rosidl_typesupport_c
+[40.097s] [100%] Built target uav_msgs_s__rosidl_typesupport_introspection_c
+[40.105s] [100%] Built target uav_msgs_s__rosidl_typesupport_fastrtps_c
+[40.127s] Invoked command in '/home/pi/drone_workspace/drone-2026/ros_workspace/src/build/uav_msgs' returned '0': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/opt/ros/jazzy DEBUGINFOD_URLS=https://debuginfod.ubuntu.com /usr/bin/cmake --build /home/pi/drone_workspace/drone-2026/ros_workspace/src/build/uav_msgs -- -j4 -l4
+[40.144s] Invoking command in '/home/pi/drone_workspace/drone-2026/ros_workspace/src/build/uav_msgs': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/opt/ros/jazzy DEBUGINFOD_URLS=https://debuginfod.ubuntu.com /usr/bin/cmake --install /home/pi/drone_workspace/drone-2026/ros_workspace/src/build/uav_msgs
+[40.158s] -- Install configuration: ""
+[40.159s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/share/ament_index/resource_index/rosidl_interfaces/uav_msgs
+[40.159s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/share/uav_msgs/msg/MissionStatus.json
+[40.159s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/share/uav_msgs/msg/GeoReferencedImage.json
+[40.160s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/share/uav_msgs/msg/Detection.json
+[40.160s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/share/uav_msgs/msg/DetectionArray.json
+[40.160s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/share/uav_msgs/action/MoveToGpsWaypoint.json
+[40.160s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/share/uav_msgs/action/StartMapping.json
+[40.160s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/share/uav_msgs/action/StartDetection.json
+[40.161s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/share/uav_msgs/action/MoveCamera.json
+[40.161s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs
+[40.161s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action
+[40.161s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action/start_detection.h
+[40.161s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action/move_to_gps_waypoint.h
+[40.162s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action/start_mapping.h
+[40.162s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action/detail
+[40.162s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action/detail/start_detection__functions.h
+[40.162s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action/detail/move_camera__functions.c
+[40.162s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action/detail/move_to_gps_waypoint__description.c
+[40.163s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action/detail/move_camera__functions.h
+[40.163s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action/detail/start_mapping__type_support.c
+[40.163s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action/detail/move_to_gps_waypoint__functions.c
+[40.163s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action/detail/start_mapping__functions.h
+[40.164s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action/detail/move_to_gps_waypoint__type_support.c
+[40.164s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action/detail/start_mapping__type_support.h
+[40.164s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action/detail/move_to_gps_waypoint__type_support.h
+[40.164s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action/detail/start_mapping__struct.h
+[40.164s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action/detail/start_mapping__description.c
+[40.164s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action/detail/start_detection__struct.h
+[40.165s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action/detail/move_to_gps_waypoint__struct.h
+[40.165s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action/detail/start_detection__type_support.c
+[40.165s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action/detail/start_detection__description.c
+[40.165s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action/detail/start_detection__type_support.h
+[40.165s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action/detail/move_camera__description.c
+[40.166s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action/detail/start_detection__functions.c
+[40.166s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action/detail/move_camera__struct.h
+[40.166s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action/detail/move_to_gps_waypoint__functions.h
+[40.166s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action/detail/move_camera__type_support.h
+[40.167s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action/detail/move_camera__type_support.c
+[40.167s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action/detail/start_mapping__functions.c
+[40.167s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action/move_camera.h
+[40.167s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg
+[40.167s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/detection_array.h
+[40.167s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/detection.h
+[40.168s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/mission_status.h
+[40.168s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/geo_referenced_image.h
+[40.168s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/rosidl_generator_c__visibility_control.h
+[40.168s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/detail
+[40.168s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/detail/detection__functions.h
+[40.168s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/detail/detection__functions.c
+[40.168s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/detail/mission_status__functions.h
+[40.169s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/detail/mission_status__type_support.c
+[40.169s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/detail/detection_array__functions.c
+[40.169s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/detail/detection__description.c
+[40.169s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/detail/mission_status__struct.h
+[40.169s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/detail/geo_referenced_image__description.c
+[40.169s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/detail/detection_array__description.c
+[40.169s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/detail/detection_array__struct.h
+[40.170s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/detail/geo_referenced_image__struct.h
+[40.170s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/detail/geo_referenced_image__type_support.c
+[40.170s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/detail/mission_status__description.c
+[40.170s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/detail/geo_referenced_image__type_support.h
+[40.170s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/detail/geo_referenced_image__functions.h
+[40.170s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/detail/mission_status__type_support.h
+[40.170s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/detail/mission_status__functions.c
+[40.171s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/detail/detection__struct.h
+[40.171s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/detail/detection_array__functions.h
+[40.171s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/detail/detection__type_support.c
+[40.171s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/detail/detection_array__type_support.h
+[40.171s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/detail/geo_referenced_image__functions.c
+[40.171s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/detail/detection__type_support.h
+[40.172s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/detail/detection_array__type_support.c
+[40.172s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/share/uav_msgs/environment/library_path.sh
+[40.172s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/share/uav_msgs/environment/library_path.dsv
+[40.172s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/lib/libuav_msgs__rosidl_generator_c.so
+[40.174s] -- Set non-toolchain portion of runtime path of "/home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/lib/libuav_msgs__rosidl_generator_c.so" to ""
+[40.175s] -- Up-to-date: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs
+[40.175s] -- Up-to-date: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action
+[40.175s] -- Up-to-date: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action/detail
+[40.175s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action/detail/start_detection__rosidl_typesupport_fastrtps_c.h
+[40.175s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action/detail/move_to_gps_waypoint__rosidl_typesupport_fastrtps_c.h
+[40.175s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action/detail/start_mapping__rosidl_typesupport_fastrtps_c.h
+[40.175s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action/detail/move_camera__rosidl_typesupport_fastrtps_c.h
+[40.176s] -- Up-to-date: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg
+[40.176s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/rosidl_typesupport_fastrtps_c__visibility_control.h
+[40.176s] -- Up-to-date: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/detail
+[40.176s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/detail/detection__rosidl_typesupport_fastrtps_c.h
+[40.176s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/detail/geo_referenced_image__rosidl_typesupport_fastrtps_c.h
+[40.176s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/detail/mission_status__rosidl_typesupport_fastrtps_c.h
+[40.176s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/detail/detection_array__rosidl_typesupport_fastrtps_c.h
+[40.177s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/lib/libuav_msgs__rosidl_typesupport_fastrtps_c.so
+[40.178s] -- Set non-toolchain portion of runtime path of "/home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/lib/libuav_msgs__rosidl_typesupport_fastrtps_c.so" to ""
+[40.178s] -- Up-to-date: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs
+[40.178s] -- Up-to-date: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action
+[40.178s] -- Up-to-date: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action/detail
+[40.178s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action/detail/move_to_gps_waypoint__rosidl_typesupport_introspection_c.h
+[40.178s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action/detail/start_mapping__type_support.c
+[40.179s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action/detail/move_to_gps_waypoint__type_support.c
+[40.179s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action/detail/start_detection__type_support.c
+[40.179s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action/detail/start_mapping__rosidl_typesupport_introspection_c.h
+[40.179s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action/detail/start_detection__rosidl_typesupport_introspection_c.h
+[40.180s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action/detail/move_camera__rosidl_typesupport_introspection_c.h
+[40.180s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action/detail/move_camera__type_support.c
+[40.180s] -- Up-to-date: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg
+[40.180s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/rosidl_typesupport_introspection_c__visibility_control.h
+[40.180s] -- Up-to-date: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/detail
+[40.180s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/detail/mission_status__type_support.c
+[40.181s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/detail/detection__rosidl_typesupport_introspection_c.h
+[40.181s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/detail/geo_referenced_image__rosidl_typesupport_introspection_c.h
+[40.181s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/detail/mission_status__rosidl_typesupport_introspection_c.h
+[40.181s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/detail/geo_referenced_image__type_support.c
+[40.181s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/detail/detection_array__rosidl_typesupport_introspection_c.h
+[40.181s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/detail/detection__type_support.c
+[40.181s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/detail/detection_array__type_support.c
+[40.182s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/lib/libuav_msgs__rosidl_typesupport_introspection_c.so
+[40.183s] -- Set non-toolchain portion of runtime path of "/home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/lib/libuav_msgs__rosidl_typesupport_introspection_c.so" to ""
+[40.183s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/lib/libuav_msgs__rosidl_typesupport_c.so
+[40.184s] -- Set non-toolchain portion of runtime path of "/home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/lib/libuav_msgs__rosidl_typesupport_c.so" to ""
+[40.184s] -- Up-to-date: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs
+[40.184s] -- Up-to-date: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action
+[40.184s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action/move_to_gps_waypoint.hpp
+[40.184s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action/move_camera.hpp
+[40.184s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action/start_mapping.hpp
+[40.184s] -- Up-to-date: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action/detail
+[40.184s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action/detail/start_detection__struct.hpp
+[40.184s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action/detail/start_mapping__builder.hpp
+[40.185s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action/detail/start_detection__traits.hpp
+[40.185s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action/detail/start_mapping__struct.hpp
+[40.185s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action/detail/move_to_gps_waypoint__struct.hpp
+[40.185s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action/detail/move_to_gps_waypoint__traits.hpp
+[40.186s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action/detail/move_camera__type_support.hpp
+[40.186s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action/detail/move_camera__traits.hpp
+[40.186s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action/detail/start_mapping__type_support.hpp
+[40.186s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action/detail/start_detection__type_support.hpp
+[40.186s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action/detail/move_camera__struct.hpp
+[40.186s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action/detail/move_camera__builder.hpp
+[40.187s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action/detail/start_detection__builder.hpp
+[40.187s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action/detail/move_to_gps_waypoint__builder.hpp
+[40.187s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action/detail/move_to_gps_waypoint__type_support.hpp
+[40.187s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action/detail/start_mapping__traits.hpp
+[40.187s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action/start_detection.hpp
+[40.187s] -- Up-to-date: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg
+[40.188s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/rosidl_generator_cpp__visibility_control.hpp
+[40.188s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/detection_array.hpp
+[40.188s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/mission_status.hpp
+[40.188s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/geo_referenced_image.hpp
+[40.188s] -- Up-to-date: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/detail
+[40.188s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/detail/geo_referenced_image__struct.hpp
+[40.188s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/detail/geo_referenced_image__type_support.hpp
+[40.188s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/detail/mission_status__traits.hpp
+[40.189s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/detail/detection_array__struct.hpp
+[40.189s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/detail/detection_array__type_support.hpp
+[40.189s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/detail/mission_status__struct.hpp
+[40.189s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/detail/geo_referenced_image__traits.hpp
+[40.189s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/detail/detection__traits.hpp
+[40.189s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/detail/detection_array__traits.hpp
+[40.190s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/detail/mission_status__type_support.hpp
+[40.190s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/detail/detection_array__builder.hpp
+[40.190s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/detail/detection__type_support.hpp
+[40.190s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/detail/mission_status__builder.hpp
+[40.190s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/detail/detection__builder.hpp
+[40.190s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/detail/detection__struct.hpp
+[40.190s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/detail/geo_referenced_image__builder.hpp
+[40.191s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/detection.hpp
+[40.191s] -- Up-to-date: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs
+[40.191s] -- Up-to-date: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action
+[40.191s] -- Up-to-date: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action/detail
+[40.191s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action/detail/move_camera__rosidl_typesupport_fastrtps_cpp.hpp
+[40.191s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action/detail/start_detection__rosidl_typesupport_fastrtps_cpp.hpp
+[40.191s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action/detail/move_to_gps_waypoint__rosidl_typesupport_fastrtps_cpp.hpp
+[40.192s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action/detail/start_mapping__rosidl_typesupport_fastrtps_cpp.hpp
+[40.192s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action/detail/dds_fastrtps
+[40.192s] -- Up-to-date: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg
+[40.192s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/rosidl_typesupport_fastrtps_cpp__visibility_control.h
+[40.192s] -- Up-to-date: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/detail
+[40.192s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/detail/mission_status__rosidl_typesupport_fastrtps_cpp.hpp
+[40.192s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/detail/detection__rosidl_typesupport_fastrtps_cpp.hpp
+[40.193s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/detail/geo_referenced_image__rosidl_typesupport_fastrtps_cpp.hpp
+[40.193s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/detail/dds_fastrtps
+[40.193s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/detail/detection_array__rosidl_typesupport_fastrtps_cpp.hpp
+[40.193s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/lib/libuav_msgs__rosidl_typesupport_fastrtps_cpp.so
+[40.195s] -- Set non-toolchain portion of runtime path of "/home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/lib/libuav_msgs__rosidl_typesupport_fastrtps_cpp.so" to ""
+[40.196s] -- Up-to-date: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs
+[40.196s] -- Up-to-date: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action
+[40.196s] -- Up-to-date: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action/detail
+[40.196s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action/detail/move_camera__type_support.cpp
+[40.196s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action/detail/start_detection__type_support.cpp
+[40.196s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action/detail/start_detection__rosidl_typesupport_introspection_cpp.hpp
+[40.196s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action/detail/move_to_gps_waypoint__type_support.cpp
+[40.197s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action/detail/move_camera__rosidl_typesupport_introspection_cpp.hpp
+[40.197s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action/detail/move_to_gps_waypoint__rosidl_typesupport_introspection_cpp.hpp
+[40.197s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action/detail/start_mapping__rosidl_typesupport_introspection_cpp.hpp
+[40.197s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/action/detail/start_mapping__type_support.cpp
+[40.197s] -- Up-to-date: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg
+[40.197s] -- Up-to-date: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/detail
+[40.198s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/detail/detection__rosidl_typesupport_introspection_cpp.hpp
+[40.198s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/detail/mission_status__rosidl_typesupport_introspection_cpp.hpp
+[40.198s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/detail/mission_status__type_support.cpp
+[40.198s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/detail/geo_referenced_image__type_support.cpp
+[40.198s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/detail/detection__type_support.cpp
+[40.198s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/detail/geo_referenced_image__rosidl_typesupport_introspection_cpp.hpp
+[40.198s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/detail/detection_array__type_support.cpp
+[40.199s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/include/uav_msgs/uav_msgs/msg/detail/detection_array__rosidl_typesupport_introspection_cpp.hpp
+[40.199s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/lib/libuav_msgs__rosidl_typesupport_introspection_cpp.so
+[40.201s] -- Set non-toolchain portion of runtime path of "/home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/lib/libuav_msgs__rosidl_typesupport_introspection_cpp.so" to ""
+[40.201s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/lib/libuav_msgs__rosidl_typesupport_cpp.so
+[40.203s] -- Set non-toolchain portion of runtime path of "/home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/lib/libuav_msgs__rosidl_typesupport_cpp.so" to ""
+[40.203s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/share/uav_msgs/environment/pythonpath.sh
+[40.203s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/share/uav_msgs/environment/pythonpath.dsv
+[40.203s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/lib/python3.12/site-packages/uav_msgs-0.1.0-py3.12.egg-info
+[40.203s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/lib/python3.12/site-packages/uav_msgs-0.1.0-py3.12.egg-info/dependency_links.txt
+[40.203s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/lib/python3.12/site-packages/uav_msgs-0.1.0-py3.12.egg-info/top_level.txt
+[40.204s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/lib/python3.12/site-packages/uav_msgs-0.1.0-py3.12.egg-info/SOURCES.txt
+[40.204s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/lib/python3.12/site-packages/uav_msgs-0.1.0-py3.12.egg-info/PKG-INFO
+[40.204s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/lib/python3.12/site-packages/uav_msgs
+[40.204s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/lib/python3.12/site-packages/uav_msgs/_uav_msgs_s.ep.rosidl_typesupport_introspection_c.c
+[40.205s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/lib/python3.12/site-packages/uav_msgs/_uav_msgs_s.ep.rosidl_typesupport_c.c
+[40.205s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/lib/python3.12/site-packages/uav_msgs/action
+[40.205s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/lib/python3.12/site-packages/uav_msgs/action/_move_to_gps_waypoint_s.c
+[40.206s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/lib/python3.12/site-packages/uav_msgs/action/_move_to_gps_waypoint.py
+[40.206s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/lib/python3.12/site-packages/uav_msgs/action/_start_mapping.py
+[40.206s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/lib/python3.12/site-packages/uav_msgs/action/_start_detection.py
+[40.206s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/lib/python3.12/site-packages/uav_msgs/action/_start_mapping_s.c
+[40.207s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/lib/python3.12/site-packages/uav_msgs/action/__init__.py
+[40.207s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/lib/python3.12/site-packages/uav_msgs/action/_start_detection_s.c
+[40.207s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/lib/python3.12/site-packages/uav_msgs/action/_move_camera.py
+[40.207s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/lib/python3.12/site-packages/uav_msgs/action/_move_camera_s.c
+[40.207s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/lib/python3.12/site-packages/uav_msgs/msg
+[40.208s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/lib/python3.12/site-packages/uav_msgs/msg/_geo_referenced_image.py
+[40.208s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/lib/python3.12/site-packages/uav_msgs/msg/_detection.py
+[40.208s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/lib/python3.12/site-packages/uav_msgs/msg/_detection_s.c
+[40.208s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/lib/python3.12/site-packages/uav_msgs/msg/__init__.py
+[40.208s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/lib/python3.12/site-packages/uav_msgs/msg/_detection_array_s.c
+[40.208s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/lib/python3.12/site-packages/uav_msgs/msg/_mission_status_s.c
+[40.208s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/lib/python3.12/site-packages/uav_msgs/msg/_geo_referenced_image_s.c
+[40.209s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/lib/python3.12/site-packages/uav_msgs/msg/_detection_array.py
+[40.209s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/lib/python3.12/site-packages/uav_msgs/msg/_mission_status.py
+[40.209s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/lib/python3.12/site-packages/uav_msgs/uav_msgs_s__rosidl_typesupport_introspection_c.so
+[40.209s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/lib/python3.12/site-packages/uav_msgs/__init__.py
+[40.210s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/lib/python3.12/site-packages/uav_msgs/uav_msgs_s__rosidl_typesupport_c.so
+[40.210s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/lib/python3.12/site-packages/uav_msgs/uav_msgs_s__rosidl_typesupport_fastrtps_c.so
+[40.210s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/lib/python3.12/site-packages/uav_msgs/_uav_msgs_s.ep.rosidl_typesupport_fastrtps_c.c
+[40.349s] Listing '/home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/lib/python3.12/site-packages/uav_msgs'...
+[40.349s] Compiling '/home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/lib/python3.12/site-packages/uav_msgs/__init__.py'...
+[40.349s] Listing '/home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/lib/python3.12/site-packages/uav_msgs/action'...
+[40.349s] Compiling '/home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/lib/python3.12/site-packages/uav_msgs/action/__init__.py'...
+[40.349s] Compiling '/home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/lib/python3.12/site-packages/uav_msgs/action/_move_camera.py'...
+[40.349s] Compiling '/home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/lib/python3.12/site-packages/uav_msgs/action/_move_to_gps_waypoint.py'...
+[40.349s] Compiling '/home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/lib/python3.12/site-packages/uav_msgs/action/_start_detection.py'...
+[40.349s] Compiling '/home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/lib/python3.12/site-packages/uav_msgs/action/_start_mapping.py'...
+[40.350s] Listing '/home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/lib/python3.12/site-packages/uav_msgs/msg'...
+[40.350s] Compiling '/home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/lib/python3.12/site-packages/uav_msgs/msg/__init__.py'...
+[40.350s] Compiling '/home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/lib/python3.12/site-packages/uav_msgs/msg/_detection.py'...
+[40.350s] Compiling '/home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/lib/python3.12/site-packages/uav_msgs/msg/_detection_array.py'...
+[40.350s] Compiling '/home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/lib/python3.12/site-packages/uav_msgs/msg/_geo_referenced_image.py'...
+[40.350s] Compiling '/home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/lib/python3.12/site-packages/uav_msgs/msg/_mission_status.py'...
+[40.364s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/lib/python3.12/site-packages/uav_msgs/uav_msgs_s__rosidl_typesupport_fastrtps_c.so
+[40.365s] -- Set non-toolchain portion of runtime path of "/home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/lib/python3.12/site-packages/uav_msgs/uav_msgs_s__rosidl_typesupport_fastrtps_c.so" to ""
+[40.366s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/lib/python3.12/site-packages/uav_msgs/uav_msgs_s__rosidl_typesupport_introspection_c.so
+[40.366s] -- Set non-toolchain portion of runtime path of "/home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/lib/python3.12/site-packages/uav_msgs/uav_msgs_s__rosidl_typesupport_introspection_c.so" to ""
+[40.367s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/lib/python3.12/site-packages/uav_msgs/uav_msgs_s__rosidl_typesupport_c.so
+[40.367s] -- Set non-toolchain portion of runtime path of "/home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/lib/python3.12/site-packages/uav_msgs/uav_msgs_s__rosidl_typesupport_c.so" to ""
+[40.368s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/lib/libuav_msgs__rosidl_generator_py.so
+[40.369s] -- Set non-toolchain portion of runtime path of "/home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/lib/libuav_msgs__rosidl_generator_py.so" to ""
+[40.369s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/share/uav_msgs/msg/MissionStatus.idl
+[40.369s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/share/uav_msgs/msg/GeoReferencedImage.idl
+[40.369s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/share/uav_msgs/msg/Detection.idl
+[40.369s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/share/uav_msgs/msg/DetectionArray.idl
+[40.369s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/share/uav_msgs/action/MoveToGpsWaypoint.idl
+[40.370s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/share/uav_msgs/action/StartMapping.idl
+[40.370s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/share/uav_msgs/action/StartDetection.idl
+[40.370s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/share/uav_msgs/action/MoveCamera.idl
+[40.370s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/share/uav_msgs/msg/MissionStatus.msg
+[40.370s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/share/uav_msgs/msg/GeoReferencedImage.msg
+[40.371s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/share/uav_msgs/msg/Detection.msg
+[40.371s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/share/uav_msgs/msg/DetectionArray.msg
+[40.371s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/share/uav_msgs/action/MoveToGpsWaypoint.action
+[40.371s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/share/uav_msgs/action/StartMapping.action
+[40.371s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/share/uav_msgs/action/StartDetection.action
+[40.372s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/share/uav_msgs/action/MoveCamera.action
+[40.372s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/share/ament_index/resource_index/package_run_dependencies/uav_msgs
+[40.372s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/share/ament_index/resource_index/parent_prefix_path/uav_msgs
+[40.372s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/share/uav_msgs/environment/ament_prefix_path.sh
+[40.373s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/share/uav_msgs/environment/ament_prefix_path.dsv
+[40.373s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/share/uav_msgs/environment/path.sh
+[40.373s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/share/uav_msgs/environment/path.dsv
+[40.373s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/share/uav_msgs/local_setup.bash
+[40.373s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/share/uav_msgs/local_setup.sh
+[40.374s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/share/uav_msgs/local_setup.zsh
+[40.374s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/share/uav_msgs/local_setup.dsv
+[40.374s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/share/uav_msgs/package.dsv
+[40.374s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/share/ament_index/resource_index/packages/uav_msgs
+[40.375s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/share/uav_msgs/cmake/export_uav_msgs__rosidl_generator_cExport.cmake
+[40.375s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/share/uav_msgs/cmake/export_uav_msgs__rosidl_generator_cExport-noconfig.cmake
+[40.375s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/share/uav_msgs/cmake/export_uav_msgs__rosidl_typesupport_fastrtps_cExport.cmake
+[40.375s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/share/uav_msgs/cmake/export_uav_msgs__rosidl_typesupport_fastrtps_cExport-noconfig.cmake
+[40.376s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/share/uav_msgs/cmake/uav_msgs__rosidl_typesupport_introspection_cExport.cmake
+[40.376s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/share/uav_msgs/cmake/uav_msgs__rosidl_typesupport_introspection_cExport-noconfig.cmake
+[40.376s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/share/uav_msgs/cmake/uav_msgs__rosidl_typesupport_cExport.cmake
+[40.376s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/share/uav_msgs/cmake/uav_msgs__rosidl_typesupport_cExport-noconfig.cmake
+[40.377s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/share/uav_msgs/cmake/export_uav_msgs__rosidl_generator_cppExport.cmake
+[40.377s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/share/uav_msgs/cmake/export_uav_msgs__rosidl_typesupport_fastrtps_cppExport.cmake
+[40.377s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/share/uav_msgs/cmake/export_uav_msgs__rosidl_typesupport_fastrtps_cppExport-noconfig.cmake
+[40.377s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/share/uav_msgs/cmake/uav_msgs__rosidl_typesupport_introspection_cppExport.cmake
+[40.378s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/share/uav_msgs/cmake/uav_msgs__rosidl_typesupport_introspection_cppExport-noconfig.cmake
+[40.378s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/share/uav_msgs/cmake/uav_msgs__rosidl_typesupport_cppExport.cmake
+[40.378s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/share/uav_msgs/cmake/uav_msgs__rosidl_typesupport_cppExport-noconfig.cmake
+[40.378s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/share/uav_msgs/cmake/export_uav_msgs__rosidl_generator_pyExport.cmake
+[40.378s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/share/uav_msgs/cmake/export_uav_msgs__rosidl_generator_pyExport-noconfig.cmake
+[40.379s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/share/uav_msgs/cmake/rosidl_cmake-extras.cmake
+[40.379s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/share/uav_msgs/cmake/ament_cmake_export_dependencies-extras.cmake
+[40.379s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/share/uav_msgs/cmake/ament_cmake_export_include_directories-extras.cmake
+[40.379s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/share/uav_msgs/cmake/ament_cmake_export_libraries-extras.cmake
+[40.380s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/share/uav_msgs/cmake/ament_cmake_export_targets-extras.cmake
+[40.380s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/share/uav_msgs/cmake/rosidl_cmake_export_typesupport_targets-extras.cmake
+[40.380s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/share/uav_msgs/cmake/rosidl_cmake_export_typesupport_libraries-extras.cmake
+[40.380s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/share/uav_msgs/cmake/uav_msgsConfig.cmake
+[40.380s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/share/uav_msgs/cmake/uav_msgsConfig-version.cmake
+[40.381s] -- Installing: /home/pi/drone_workspace/drone-2026/ros_workspace/src/install/uav_msgs/share/uav_msgs/package.xml
+[40.385s] Invoked command in '/home/pi/drone_workspace/drone-2026/ros_workspace/src/build/uav_msgs' returned '0': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/opt/ros/jazzy DEBUGINFOD_URLS=https://debuginfod.ubuntu.com /usr/bin/cmake --install /home/pi/drone_workspace/drone-2026/ros_workspace/src/build/uav_msgs

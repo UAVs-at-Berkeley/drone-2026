@@ -1,0 +1,13 @@
+# Goal: start autonomous package-recovery routine
+uint8 placeholder
+
+---
+# Result
+bool success
+string message
+
+---
+# Feedback
+float64 progress   # 0.0–1.0
+string phase
+

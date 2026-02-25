@@ -21,10 +21,10 @@ setup(
     entry_points={
         "console_scripts": [
             "central_command_node = uav_mission.central_command_node:main",
-            "movement_node = uav_mission.movement_node:main",
             "mapping_node = uav_mission.mapping_node:main",
             "detection_node = uav_mission.detection_node:main",
             "camera_node = uav_mission.camera_node:main",
+            "waypoint_node = uav_mission.waypoint_node:main",
         ],
     },
 )

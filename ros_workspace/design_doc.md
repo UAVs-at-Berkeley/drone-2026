@@ -1,6 +1,6 @@
 ## SUAS Drone ROS 2 Jazzy Architecture
 
-**New to ROS?** Read **“ROS 2 concepts you’ll need”** and **“How to read the Interfaces sections”** first. Then jump to **your node’s section** (1–5) to see exactly what your node sends and receives. You can skim or skip “Coordinate frames” and “Time” until you need them; section 7 is for integration leads.
+**New to ROS?** Read **“ROS 2 concepts you’ll need”** and **“How to read the Interfaces sections”** first. Then jump to **your node’s section** (1–4) to see exactly what your node sends and receives. You can skim or skip “Coordinate frames” and “Time” until you need them; section 6 is for integration leads.
 
 ---
 
@@ -20,10 +20,10 @@ ROS 2 is a framework where **nodes** (programs) talk to each other by **publishi
 
 | Concept | Plain English |
 |--------|----------------|
-| **Node** | A single program (e.g. “Movement node”, “Mapping node”). Our system has several nodes; each does one job. |
+| **Node** | A single program (e.g. “Mapping node”, “Camera node”). Our system has several nodes; each does one job. |
 | **Topic** | A named channel for data. One node **publishes** (sends) messages on a topic; others **subscribe** (receive). Example: the camera node publishes images on `/image_data`; the mapping node subscribes to get those images. |
 | **Message** | The format of the data on a topic. Example: `sensor_msgs/msg/Image` is a standard message type for images; our custom `uav_msgs/msg/MissionStatus` describes mission state. |
-| **Action** | A request to do something that takes time (e.g. “fly to this GPS point”, “run the mapping routine”). The **client** sends a **goal**; the **server** does the work and sends **feedback** (progress updates) and a **result** (final outcome). Central Command is the client for our actions; the Movement, Mapping, Detection, and Camera nodes are the servers. |
+| **Action** | A request to do something that takes time (e.g. “fly to this GPS point”, “run the mapping routine”). The **client** sends a **goal**; the **server** does the work and sends **feedback** (progress updates) and a **result** (final outcome). Central Command is the client for our actions; the Mapping, Detection, and Camera nodes are the servers. Movement to GPS waypoints is handled via the PX4–ROS 2 DDS connection (no dedicated movement node). |
 | **Goal / Feedback / Result** | **Goal** = what you’re asking for (e.g. latitude, longitude, altitude). **Feedback** = periodic updates while the action is running (e.g. “distance to target: 5 m”). **Result** = the final answer when the action finishes (e.g. “success: true”). |
 
 **Data types you’ll see:** `float64` = decimal number; `bool` = true/false; `string` = text; `int32` = integer. Types like `sensor_msgs/msg/Image` are full message definitions (e.g. image width, height, pixel data).
@@ -60,7 +60,7 @@ In ROS 2, many messages that describe “where something is” include a **frame
 
 - **For this project**:
   - **High-level commands** use **WGS-84 GPS**: `latitude` (deg), `longitude` (deg), `altitude` (m, AMSL or relative—pick one convention).
-  - **Low-level movement node** converts GPS to a local frame and talks to the flight controller. The flight controller (e.g., Cube/PX4) typically uses **NED** (North–East–Down) with origin at the **home position** (arm location). So a natural choice is: **`map` = NED at home**, with `frame_id = "map"` on `/movement/current_pose`. Alternatively you can use **ENU** (East–North–Up) if your stack prefers it; the important thing is to **pick one convention, document it, and use it consistently** in the movement node and any nodes that consume `/movement/current_pose`.
+  - The **PX4–ROS 2 DDS** connection handles communication with the flight controller (e.g., Cube/PX4). PX4 typically uses **NED** (North–East–Down) with origin at the **home position** (arm location). So a natural choice is: **`map` = NED at home**, with `frame_id = "map"` on `/movement/current_pose` (or whatever topic the PX4 bridge exposes for drone pose). Alternatively you can use **ENU** (East–North–Up) if your stack prefers it; the important thing is to **pick one convention, document it, and use it consistently** for any node that consumes pose data.
 
 ### Time (optional read—come back when you need timestamps)
 
@@ -74,7 +74,7 @@ In ROS 2, many messages that describe “where something is” include a **frame
 **Role**:  
 The “mission brain.” It decides *what* the drone is doing (waypoints, mapping, or detection) and is the **only** node allowed to send movement and camera commands. That way we never have two nodes telling the drone to go to different places at once.
 
-**In practice:** Central Command runs a state machine (e.g. waypoint loop → mapping → detection → return). It **sends goals** to the Movement, Mapping, Detection, and Camera nodes (e.g. “start mapping”, “move to this GPS point”) and **receives feedback** from them (e.g. “please move the drone here”, “please point the camera there”). It turns that feedback into single, ordered commands—no conflicts.
+**In practice:** Central Command runs a state machine (e.g. waypoint loop → mapping → detection → return). It **sends goals** to the Mapping, Detection, and Camera nodes  (e.g. “start mapping”, “move to this GPS point”) and **receives feedback** from them (e.g. “please move the drone here”, “please point the camera there”). It turns that feedback into single, ordered commands—no conflicts.
 
 ### 1.1 Interfaces
 
@@ -83,7 +83,7 @@ The “mission brain.” It decides *what* the drone is doing (waypoints, mappin
 #### Actions (Clients)
 
 - **Move to GPS waypoint**  
-  - **Server**: Low-Level MAVLink Movement Node  
+  - **Handled by**: PX4–ROS 2 DDS connection. Central Command (or a thin adapter) sends waypoint/setpoint commands and receives pose/status via the PX4–ROS 2 bridge; no dedicated low-level MAVLink movement node.  
   - **Action**: `uav_msgs/action/MoveToGpsWaypoint` (custom)  
   - **Goal**:
     - `float64 latitude_deg`
@@ -165,62 +165,17 @@ The “mission brain.” It decides *what* the drone is doing (waypoints, mappin
     - `string current_mode`  (e.g. `"WAYPOINT_LOOP"`, `"MAPPING"`, `"DETECTION"`)
     - `string last_error`
 
----
-
-## 2. Low-Level MAVLink / Movement Node
-
-**Role**:  
-This node is the **only** one that talks to the flight controller (e.g. Cube). It receives “fly to this GPS point” requests from Central Command and turns them into MAVLink commands the flight controller understands. It also keeps the drone in a valid flying state (armed, right flight mode, etc.) and reports progress and failures.
-
-**In practice:** Your sub-team implements an **action server**: when Central Command sends a goal (latitude, longitude, altitude, yaw), you convert that to the format the flight controller expects, send the commands, and stream back feedback (e.g. distance to target) and a final result (success/failure). You do *not* decide the mission—you only execute “go here.”
-
-- **“Handles FCU states”**: The flight controller (FCU) has its own states (disarmed, armed, taking off, in auto mode, landing, etc.). This node is responsible for putting it in the right state (e.g. arm before takeoff, switch to offboard/auto for navigation) and for detecting problems (failsafe, landing complete) so Central Command can react. You don’t implement the high-level mission—just “fly to this point” and keep the FCU healthy.
-
-### 2.1 Interfaces
-
-*This node is the **server** for the “Move to GPS waypoint” action: it receives the goal and sends feedback and result.*
-
-- **Move to GPS waypoint**  
-  - **Name**: `/movement/move_to_gps_waypoint`  
-  - **Action**: `uav_msgs/action/MoveToGpsWaypoint` (same as above)  
-  - **Goal (input)**:
-    - `float64 latitude_deg`
-    - `float64 longitude_deg`
-    - `float64 altitude_m`
-    - `float64 yaw_deg`
-  - **Behavior**:
-    - Convert to appropriate local/NED coordinates for MAVLink.
-    - Arm, takeoff (if needed), and navigate to the point.
-    - Monitor FCU state and failsafes.
-  - **Feedback (output)** (progress and safety only; live position is on `/movement/current_pose` to avoid redundancy):
-    - `float64 distance_to_target_m`
-    - `bool   in_failsafe`
-  - **Result (output)**:
-    - `bool   success`
-    - `string message`
-
-#### Topics
-
-- **Current pose (from FCU)**  
-  - **Topic**: `/movement/current_pose`  
-  - **Direction**: Publish (this node sends the drone’s current position/orientation)  
-  - **Type**: `geometry_msgs/msg/PoseStamped`  
-  - **Content**: Position and orientation of the drone. Use one **world frame** for the whole project (see “Coordinate frames” above). Recommended: `frame_id = "map"` with “map” = local NED at home. Document the choice so other teams know what frame they’re getting.
-
-- **Raw MAVLink** (optional; for low-level debugging)  
-  - **Topic**: `/mavlink/from_fc` (subscribe), `/mavlink/to_fc` (publish)  
-  - **Type**: `mavros_msgs/msg/Mavlink` or similar (if using a MAVROS-like interface).
 
 ---
 
-## 3. Mapping Node
+## 2. Mapping Node
 
 **Role**:  
 This node runs the **mapping mission**: fly a pattern (e.g. lawnmower) over an area, take images from the camera, and stitch them into one big map. It does *not* send commands directly to the flight controller—instead it **sends feedback** to Central Command (e.g. “please move the drone to this GPS point”, “please point the camera here”), and Central Command turns that into movement and camera commands. When mapping is done, it publishes the stitched map and returns a result.
 
 **In practice:** You implement an **action server**: when Central Command sends “go” (empty goal), you run your pattern logic, subscribe to `/image_data` for camera frames, send movement/camera requests via feedback, stitch images, and finally send back the success/failure.
 
-### 3.1 Interfaces
+### 2.1 Interfaces
 
 *This node is the **server** for “Start mapping”: it receives the goal and sends feedback and result.*
 
@@ -261,14 +216,14 @@ This node runs the **mapping mission**: fly a pattern (e.g. lawnmower) over an a
 
 ---
 
-## 4. Image Detection Node
+## 3. Image Detection Node
 
 **Role**:  
 This node runs the **mannequin detection and airdrop** mission: use the camera to find the target, ask Central Command to move the drone or point the camera as needed, and when the target is in the right place, request an airdrop. Like the Mapping node, it does *not* talk to the flight controller directly—it sends **feedback** (e.g. “move here”, “point camera here”, “trigger airdrop”) and Central Command executes those requests.
 
 **In practice:** You implement an **action server**: when Central Command sends “go”, you subscribe to `/image_data`, run your detection logic, send movement/camera/airdrop requests via feedback, and when done send back a result (success, final target position, confidence).
 
-### 4.1 Interfaces
+### 3.1 Interfaces
 
 *This node is the **server** for “Start detection”: it receives the goal and sends feedback and result.*
 
@@ -317,14 +272,14 @@ This node runs the **mannequin detection and airdrop** mission: use the camera t
 
 ---
 
-## 5. Camera Data Link & Control Node
+## 4. Camera Data Link & Control Node
 
 **Role**:  
 This node talks to the **hardware**: it gets image data from the gimbal camera (e.g. over Ethernet) and **publishes** it to `/image_data` so Mapping and Detection can use it. It also controls the gimbal (point the camera): Central Command sends “point camera here” actions, and this node turns them into commands the camera hardware understands.
 
 **In practice:** You implement (1) a **publisher** for `/image_data` (raw images from the camera) and (2) an **action server** for camera movement: when Central Command sends a goal (pitch, yaw, roll in degrees), you move the gimbal and send back feedback and result.
 
-### 5.1 Interfaces
+### 4.1 Interfaces
 
 - **Raw camera images**  
   - **Topic**: `/image_data`  
@@ -351,7 +306,7 @@ This node talks to the **hardware**: it gets image data from the gimbal camera (
 
 ---
 
-## 6. Data Types Summary (Design Targets)
+## 5. Data Types Summary (Design Targets)
 
 *Quick reference for the message and action types we use. We’ll implement the custom ones in a shared package (e.g. `uav_msgs`).*
 
@@ -361,7 +316,7 @@ This node talks to the **hardware**: it gets image data from the gimbal camera (
   - `builtin_interfaces/msg/Time` – timestamps (seconds + nanoseconds).
 
 - **Custom messages / actions** (we define these in `uav_msgs`)
-  - `uav_msgs/action/MoveToGpsWaypoint` – fly to a GPS point.
+  - `uav_msgs/action/MoveToGpsWaypoint` – fly to a GPS point (implemented via PX4–ROS 2 DDS; no dedicated movement node).
   - `uav_msgs/action/StartMapping` – run the mapping routine.
   - `uav_msgs/action/StartDetection` – run the mannequin detection/airdrop routine.
   - `uav_msgs/action/MoveCamera` – point the gimbal.
@@ -373,7 +328,7 @@ These definitions are the **contract** for each sub-team: your node should only 
 
 ---
 
-## 7. Design methodology suggestions
+## 6. Design methodology suggestions
 
 *Optional read for leads and integration. These practices help keep the system easy to integrate and debug when several sub-teams work in parallel.*
 
@@ -394,9 +349,9 @@ These definitions are the **contract** for each sub-team: your node should only 
 
 ### Integration order and test strategy
 
-- **Integrate in dependency order.** Suggested order: (1) Movement node + Central Command (waypoint loop only); (2) Camera node + `/image_data`; (3) Mapping node (Central Command can call mapping action); (4) Image detection node. Each step gives you a testable “slice” of the system.
-- **Use mocks for cross-team testing.** While Movement is not ready, Mapping/Detection can use a *mock* action server or a simple “move to GPS” client that logs goals. Similarly, a mock `/image_data` publisher (e.g. static image or bag playback) lets Mapping/Detection develop without the real camera. Define minimal mock behaviors (e.g. “mock movement always succeeds after 2 s”) so expectations are consistent.
-- **Reuse SITL for integration.** Use your existing SITL/simulator to run as many nodes as possible together (Central Command + Movement + optional mocks). Add a simple “dry run” or “simulation” mode where Central Command runs the state machine without real hardware, to test transitions and action sequences.
+- **Integrate in dependency order.** Suggested order: (1) Central Command with PX4–ROS 2 DDS (waypoint loop only); (2) Camera node + `/image_data`; (3) Mapping node (Central Command can call mapping action); (4) Image detection node. Each step gives you a testable “slice” of the system.
+- **Use mocks for cross-team testing.** While the PX4–ROS 2 connection is not available, Mapping/Detection can use a *mock* action server or a simple “move to GPS” client that logs goals. Similarly, a mock `/image_data` publisher (e.g. static image or bag playback) lets Mapping/Detection develop without the real camera. Define minimal mock behaviors (e.g. “mock movement always succeeds after 2 s”) so expectations are consistent.
+- **Reuse SITL for integration.** Use your existing SITL/simulator to run as many nodes as possible together (Central Command with PX4–ROS 2 DDS + optional mocks). Add a simple “dry run” or “simulation” mode where Central Command runs the state machine without real hardware, to test transitions and action sequences.
 
 ### Configuration and operability
 
@@ -423,7 +378,7 @@ These practices keep the system understandable, testable, and easier to debug wh
 |------|--------|
 | **Action** | A long-running request (goal → feedback → result). Used for “fly here”, “start mapping”, etc. |
 | **Client** | The node that *sends* an action goal (for us, Central Command). |
-| **Server** | The node that *runs* the action and sends feedback and result (Movement, Mapping, Detection, Camera). |
+| **Server** | The node that *runs* the action and sends feedback and result (Mapping, Detection, Camera). |
 | **Topic** | A named channel for data. **Publish** = send; **Subscribe** = receive. |
 | **Message** | The format of data on a topic or inside an action (goal/feedback/result). |
 | **FCU** | Flight Controller Unit (e.g. Cube). The hardware that actually flies the drone. |

@@ -1,0 +1,13 @@
+# Goal: trigger waypoint mission (e.g. run predefined or parameterized waypoints)
+uint8 placeholder
+
+---
+# Result
+bool success
+string message
+
+---
+# Feedback
+float64 current_waypoint_index
+float64 total_waypoints
+string phase

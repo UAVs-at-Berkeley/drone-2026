@@ -18,10 +18,15 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/GeoReferencedImage.msg"
   "msg/Detection.msg"
   "msg/DetectionArray.msg"
-  "action/MoveToGpsWaypoint.action"
+  "action/StartTimeTrial.action"
+  "action/StartObjectLocalization.action"
+  "action/StartPackageDelivery.action"
+  "action/StartPackageRecovery.action"
+  "action/StartPayloadDrop.action"
   "action/StartMapping.action"
   "action/StartDetection.action"
   "action/MoveCamera.action"
+  "action/RunWaypointMission.action"
   DEPENDENCIES sensor_msgs geometry_msgs std_msgs
 )
 
