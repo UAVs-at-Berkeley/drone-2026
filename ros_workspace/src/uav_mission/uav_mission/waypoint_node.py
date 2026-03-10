@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
-Waypoint Node - action server that flies a predetermined list of waypoints via PX4 VehicleCommands.
+Waypoint Node - action server that flies a predetermined list of waypoints via MAVROS.
 
 - Receives RunWaypointMission goal from Central Command (placeholder trigger).
 - Loads waypoints from ROS params (waypoint_lats, waypoint_lons, waypoint_alts, waypoint_yaws)
   or a single "waypoints" list of {lat, lon, alt, yaw} dicts.
-- Flies waypoints in sequence: sends DO_REPOSITION for each, and does not advance to the next
-  until the drone is sufficiently close (arrival_radius_m) using /fmu/out/vehicle_global_position.
+- Flies waypoints in sequence: publishes each target to /mavros/setpoint_position/global
+  (geographic_msgs/GeoPoseStamped) and does not advance until the drone is sufficiently
+  close (arrival_radius_m) using /mavros/global_position/global (sensor_msgs/NavSatFix).
 - Sends feedback: current_waypoint_index, total_waypoints, phase.
-- Publishes VehicleCommand to /fmu/in/vehicle_command (same as central_command_node).
 """
 
 import math
@@ -17,15 +17,29 @@ from rclpy.node import Node
 from rclpy.action import ActionServer
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 from uav_msgs.action import RunWaypointMission
-from px4_msgs.msg import VehicleCommand
-from px4_msgs.msg import VehicleGlobalPosition
+from sensor_msgs.msg import NavSatFix
+from geographic_msgs.msg import GeoPoseStamped, GeoPose, GeoPoint
+from geometry_msgs.msg import Quaternion
 
 
 # Approximate meters per degree at mid-latitudes (for horizontal distance)
 M_PER_DEG_LAT = 111320.0
 
 
-def horizontal_distance_m(lat1_deg: float, lon1_deg: float, lat2_deg: float, lon2_deg: float) -> float:
+def yaw_deg_to_quaternion(yaw_deg: float) -> Quaternion:
+    """Convert yaw in degrees to a quaternion (rotation about ENU Z-axis)."""
+    half_yaw = math.radians(yaw_deg) * 0.5
+    q = Quaternion()
+    q.x = 0.0
+    q.y = 0.0
+    q.z = math.sin(half_yaw)
+    q.w = math.cos(half_yaw)
+    return q
+
+
+def horizontal_distance_m(
+    lat1_deg: float, lon1_deg: float, lat2_deg: float, lon2_deg: float
+) -> float:
     """Approximate horizontal distance in meters (WGS84 short distance)."""
     lat1 = math.radians(lat1_deg)
     lon1 = math.radians(lon1_deg)
@@ -80,9 +94,12 @@ class WaypointNode(Node):
 
         self.declare_parameter("arrival_radius_m", 5.0)
         self.declare_parameter("waypoint_timeout_sec", 120.0)
-        self.declare_parameter("position_topic", "/fmu/out/vehicle_global_position")
-        self.declare_parameter("vehicle_command_topic", "/fmu/in/vehicle_command")
-        self.declare_parameter("target_system", 1)
+        self.declare_parameter(
+            "position_topic", "/mavros/global_position/global"
+        )
+        self.declare_parameter(
+            "setpoint_topic", "/mavros/setpoint_position/global"
+        )
 
         # Waypoints from params (set via YAML: waypoint_lats, waypoint_lons, waypoint_alts, waypoint_yaws)
         self.declare_parameter("waypoint_lats", [])
@@ -90,9 +107,9 @@ class WaypointNode(Node):
         self.declare_parameter("waypoint_alts", [])
         self.declare_parameter("waypoint_yaws", [])
 
-        self._cmd_pub = self.create_publisher(
-            VehicleCommand,
-            self.get_parameter("vehicle_command_topic").value,
+        self._setpoint_pub = self.create_publisher(
+            GeoPoseStamped,
+            self.get_parameter("setpoint_topic").value,
             10,
         )
 
@@ -106,9 +123,9 @@ class WaypointNode(Node):
         self._current_alt = None
         self._position_received = False
         self._position_sub = self.create_subscription(
-            VehicleGlobalPosition,
+            NavSatFix,
             self.get_parameter("position_topic").value,
-            self._on_vehicle_global_position,
+            self._on_global_position,
             qos_sensor,
         )
 
@@ -120,37 +137,33 @@ class WaypointNode(Node):
         )
 
         self.get_logger().info(
-            "Waypoint node started. Action: /waypoint/run_mission; waypoints from ROS params."
+            "Waypoint node started (MAVROS). Action: /waypoint/run_mission; waypoints from ROS params."
         )
 
-    def _on_vehicle_global_position(self, msg: VehicleGlobalPosition):
-        if getattr(msg, "lat_lon_valid", True):
-            self._current_lat = msg.lat
-            self._current_lon = msg.lon
-        self._current_alt = msg.alt
+    def _on_global_position(self, msg: NavSatFix):
+        self._current_lat = msg.latitude
+        self._current_lon = msg.longitude
+        self._current_alt = msg.altitude if not math.isnan(msg.altitude) else 0.0
         self._position_received = True
 
-    def _send_do_reposition(self, lat_deg: float, lon_deg: float, alt_m: float, yaw_deg: float):
-        """Publish a DO_REPOSITION VehicleCommand to PX4 (DDS)."""
-        msg = VehicleCommand()
-        msg.timestamp = int(self.get_clock().now().nanoseconds // 1000)
-        msg.command = VehicleCommand.VEHICLE_CMD_DO_REPOSITION
-        msg.param1 = -1.0
-        msg.param2 = 0.0
-        msg.param3 = 0.0
-        msg.param4 = float(yaw_deg)
-        msg.param5 = float(lat_deg)
-        msg.param6 = float(lon_deg)
-        msg.param7 = float(alt_m)
-        msg.target_system = self.get_parameter("target_system").value
-        msg.target_component = 1
-        msg.source_system = 1
-        msg.source_component = 1
-        msg.confirmation = 0
-        msg.from_external = True
-        self._cmd_pub.publish(msg)
+    def _publish_setpoint(
+        self, lat_deg: float, lon_deg: float, alt_m: float, yaw_deg: float
+    ):
+        """Publish a single global setpoint to MAVROS (GeoPoseStamped)."""
+        msg = GeoPoseStamped()
+        msg.header.stamp = self.get_clock().now().to_msg()
+        msg.header.frame_id = "map"
+        msg.pose.position = GeoPoint(
+            latitude=float(lat_deg),
+            longitude=float(lon_deg),
+            altitude=float(alt_m),
+        )
+        msg.pose.orientation = yaw_deg_to_quaternion(yaw_deg)
+        self._setpoint_pub.publish(msg)
 
-    def _distance_to_waypoint(self, lat_deg: float, lon_deg: float, alt_m: float) -> float:
+    def _distance_to_waypoint(
+        self, lat_deg: float, lon_deg: float, alt_m: float
+    ) -> float:
         """Current distance to waypoint (horizontal + vertical in meters)."""
         if not self._position_received or self._current_lat is None:
             return float("inf")
@@ -158,7 +171,7 @@ class WaypointNode(Node):
             self._current_lat, self._current_lon, lat_deg, lon_deg
         )
         vertical = abs(float(self._current_alt) - float(alt_m))
-        return math.sqrt(horizontal ** 2 + vertical ** 2)
+        return math.sqrt(horizontal**2 + vertical**2)
 
     def _execute_callback(self, goal_handle):
         waypoints = parse_waypoints_from_params(self)
@@ -185,7 +198,12 @@ class WaypointNode(Node):
 
             self.get_logger().info(
                 "Waypoint %d/%d: lat=%.6f lon=%.6f alt=%.1f yaw=%.1f",
-                idx + 1, total, lat_deg, lon_deg, alt_m, yaw_deg,
+                idx + 1,
+                total,
+                lat_deg,
+                lon_deg,
+                alt_m,
+                yaw_deg,
             )
             feedback = RunWaypointMission.Feedback()
             feedback.current_waypoint_index = float(idx + 1)
@@ -193,9 +211,7 @@ class WaypointNode(Node):
             feedback.phase = "flying_to_waypoint"
             goal_handle.publish_feedback(feedback)
 
-            self._send_do_reposition(lat_deg, lon_deg, alt_m, yaw_deg)
-
-            # Wait until sufficiently close or timeout
+            # Wait until sufficiently close or timeout; keep publishing setpoint so FC stays in setpoint mode
             start = self.get_clock().now()
             while rclpy.ok():
                 if goal_handle.is_cancel_requested:
@@ -204,6 +220,8 @@ class WaypointNode(Node):
                     result.message = "Mission cancelled"
                     goal_handle.succeed(result)
                     return
+
+                self._publish_setpoint(lat_deg, lon_deg, alt_m, yaw_deg)
 
                 dist = self._distance_to_waypoint(lat_deg, lon_deg, alt_m)
                 elapsed = (self.get_clock().now() - start).nanoseconds / 1e9
@@ -215,13 +233,18 @@ class WaypointNode(Node):
                 if dist <= arrival_radius_m:
                     self.get_logger().info(
                         "Waypoint %d/%d reached (distance=%.1f m).",
-                        idx + 1, total, dist,
+                        idx + 1,
+                        total,
+                        dist,
                     )
                     break
                 if elapsed >= timeout_sec:
                     self.get_logger().warn(
                         "Waypoint %d/%d timeout (distance=%.1f m after %.0f s).",
-                        idx + 1, total, dist, elapsed,
+                        idx + 1,
+                        total,
+                        dist,
+                        elapsed,
                     )
                     result = RunWaypointMission.Result()
                     result.success = False
