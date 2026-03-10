@@ -10,6 +10,7 @@
   <depend>rclpy</depend>
   <depend>uav_msgs</depend>
   <depend>px4_msgs</depend>
+  <depend>mavros_msgs</depend>
   <depend>sensor_msgs</depend>
   <depend>cv_bridge</depend>
   <depend>geometry_msgs</depend>
