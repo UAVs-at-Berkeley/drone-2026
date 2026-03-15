@@ -531,6 +531,11 @@ class GimbalCamera:
             self.most_recent_feedback = None
         return None
 
+    def get_most_recent_feedback(self) -> Optional[ResponsePacket]:
+        """Return the latest valid GCU response packet, or None. Thread-safe."""
+        with self._lock:
+            return self.most_recent_feedback
+
     def most_recent_image(self) -> Optional[np.ndarray]:
         """Read the most recent frame from the RTSP video stream. Thread-safe.
         Returns:

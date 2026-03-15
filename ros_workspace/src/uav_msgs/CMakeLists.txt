@@ -18,6 +18,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/GeoReferencedImage.msg"
   "msg/Detection.msg"
   "msg/DetectionArray.msg"
+  "msg/GimbalStatus.msg"
   "action/StartTimeTrial.action"
   "action/StartObjectLocalization.action"
   "action/StartPackageDelivery.action"
