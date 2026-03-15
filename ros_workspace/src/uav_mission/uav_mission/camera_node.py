@@ -92,6 +92,10 @@ class CameraNode(Node):
         else:
             self._image_timer = None
 
+        # Track consecutive no-frame count for logging when stream never produces images
+        self._no_frame_count = 0
+        self._last_no_frame_log_time = 0.0
+
         # Timer to publish gimbal status when we have feedback (from last command response)
         if status_hz > 0:
             self._status_timer = self.create_timer(1.0 / status_hz, self._publish_gimbal_status)
@@ -102,6 +106,16 @@ class CameraNode(Node):
             "Camera node started (gimbal %s:%d, image %.1f Hz, status %.1f Hz)."
             % (gimbal_ip, gimbal_port, publish_hz, status_hz)
         )
+        # One-time check: can we get a frame? (Triggers RTSP connect; logs if stream unavailable.)
+        if publish_hz > 0 and self._cv_bridge and self._gimbal:
+            first_frame = self._gimbal.most_recent_image()
+            if first_frame is not None:
+                self.get_logger().info("Camera stream ready (rtsp://%s:%d)." % (self._gimbal.ip, self._gimbal.RTSP_PORT))
+            else:
+                self.get_logger().warn(
+                    "No frame yet from rtsp://%s:%d — /image_data will stay empty until the gimbal stream is reachable."
+                    % (self._gimbal.ip, self._gimbal.RTSP_PORT)
+                )
 
     def _publish_image(self):
         """Read latest frame from gimbal RTSP and publish to /image_data (bgr8)."""
@@ -109,7 +123,17 @@ class CameraNode(Node):
             return
         frame = self._gimbal.most_recent_image()
         if frame is None:
+            self._no_frame_count += 1
+            # Log periodically so user knows why /image_data is empty (e.g. no gimbal, RTSP unreachable)
+            now = self.get_clock().now().nanoseconds * 1e-9
+            if now - self._last_no_frame_log_time >= 5.0:
+                self.get_logger().warn(
+                    "No image from gimbal RTSP stream (gimbal reachable? rtsp://%s:%d). "
+                    "Check network and that the gimbal is on." % (self._gimbal.ip, self._gimbal.RTSP_PORT)
+                )
+                self._last_no_frame_log_time = now
             return
+        self._no_frame_count = 0
         try:
             msg = self._cv_bridge.cv2_to_imgmsg(frame, encoding="bgr8")
             msg.header.stamp = self.get_clock().now().to_msg()
