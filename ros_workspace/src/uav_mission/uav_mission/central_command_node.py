@@ -3,7 +3,7 @@
 Central Command Node - arms, takeoff, and land via MAVROS.
 
 - On start: sets flight mode to OFFBOARD (PX4), arms via /mavros/cmd/arming,
-  takeoff via /mavros/cmd/takeoff (global CommandTOL; PX4 does not support takeoff_local).
+  takeoff via CommandLong MAV_CMD_NAV_TAKEOFF (22); PX4 does not support takeoff_local (24).
   Waits for in-air from /mavros/extended_state, then lands via /mavros/cmd/land.
   Publishes mission status on /central_command/mission_status.
 """
@@ -13,7 +13,7 @@ from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 from uav_msgs.msg import MissionStatus
 from mavros_msgs.msg import ExtendedState
-from mavros_msgs.srv import CommandBool, CommandTOL, SetMode
+from mavros_msgs.srv import CommandBool, CommandLong, CommandTOL, SetMode
 from sensor_msgs.msg import NavSatFix
 
 # MAVROS ExtendedState landed_state constants
@@ -36,7 +36,8 @@ class CentralCommandNode(Node):
         # --- MAVROS: service clients and state subscription ---
         self._set_mode_client = self.create_client(SetMode, "/mavros/set_mode")
         self._arming_client = self.create_client(CommandBool, "/mavros/cmd/arming")
-        self._takeoff_client = self.create_client(CommandTOL, "/mavros/cmd/takeoff")
+        # Use CommandLong with MAV_CMD_NAV_TAKEOFF (22); PX4 rejects cmd 24 (TAKEOFF_LOCAL)
+        self._takeoff_client = self.create_client(CommandLong, "/mavros/cmd/command")
         self._land_client = self.create_client(CommandTOL, "/mavros/cmd/land")
 
         # Global position for takeoff (PX4 uses MAV_CMD_NAV_TAKEOFF with lat/lon/alt)
@@ -192,11 +193,11 @@ class CentralCommandNode(Node):
         self._call_takeoff_service()
 
     def _call_takeoff_service(self):
-        """Request takeoff via MAVROS CommandTOL (global; PX4 does not support takeoff_local/cmd 24)."""
+        """Request takeoff via CommandLong MAV_CMD_NAV_TAKEOFF (22); PX4 rejects cmd 24."""
         if not self._takeoff_client.service_is_ready():
-            self.get_logger().error("MAVROS takeoff service not available.")
+            self.get_logger().error("MAVROS cmd/command service not available.")
             self._phase = "idle"
-            self.publish_status("error", "MAVROS takeoff service not ready")
+            self.publish_status("error", "MAVROS command service not ready")
             return
         if not self._has_global_position:
             self.get_logger().warn("No global position yet, retrying takeoff in 2s.")
@@ -205,15 +206,20 @@ class CentralCommandNode(Node):
         rel_alt = self.get_parameter("takeoff_altitude_m").value
         target_alt = self._global_alt + float(rel_alt)
         self.get_logger().info(
-            "Sending TAKEOFF via MAVROS (lat=%.6f lon=%.6f alt=%.1f m)."
+            "Sending MAV_CMD_NAV_TAKEOFF (22) via MAVROS (lat=%.6f lon=%.6f alt=%.1f m)."
             % (self._global_lat, self._global_lon, target_alt)
         )
-        req = CommandTOL.Request()
-        req.min_pitch = 0.0
-        req.yaw = 0.0
-        req.latitude = self._global_lat
-        req.longitude = self._global_lon
-        req.altitude = target_alt
+        req = CommandLong.Request()
+        req.broadcast = False
+        req.command = 22  # MAV_CMD_NAV_TAKEOFF
+        req.confirmation = 0
+        req.param1 = 0.0   # min pitch (deg)
+        req.param2 = 0.0
+        req.param3 = 0.0
+        req.param4 = 0.0   # yaw (deg)
+        req.param5 = self._global_lat
+        req.param6 = self._global_lon
+        req.param7 = target_alt
         self._takeoff_client.call_async(req).add_done_callback(self._on_takeoff_response)
 
     def _on_takeoff_response(self, future):
