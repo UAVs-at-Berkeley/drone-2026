@@ -2,9 +2,9 @@
 """
 Central Command Node - arms, takeoff, and land via MAVROS.
 
-- On start: arms via /mavros/cmd/arming, takeoff via /mavros/cmd/takeoff_local.
-- Waits for in-air state from /mavros/extended_state, then lands via /mavros/cmd/land.
-- Publishes mission status on /central_command/mission_status.
+- On start: sets flight mode to OFFBOARD (PX4), arms via /mavros/cmd/arming,
+  takeoff via /mavros/cmd/takeoff_local. Waits for in-air from /mavros/extended_state,
+  then lands via /mavros/cmd/land. Publishes mission status on /central_command/mission_status.
 """
 
 import rclpy
@@ -12,7 +12,7 @@ from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 from uav_msgs.msg import MissionStatus
 from mavros_msgs.msg import ExtendedState
-from mavros_msgs.srv import CommandBool, CommandTOLLocal, CommandTOL
+from mavros_msgs.srv import CommandBool, CommandTOLLocal, CommandTOL, SetMode
 from geometry_msgs.msg import Vector3
 
 # MAVROS ExtendedState landed_state constants
@@ -24,6 +24,8 @@ LANDED_STATE_LANDING = 4
 
 # Default takeoff altitude (m, relative to current position) when using CommandTOLLocal
 DEFAULT_TAKEOFF_ALTITUDE_M = 5.0
+# Default flight mode for takeoff (PX4: OFFBOARD)
+DEFAULT_FLIGHT_MODE = "OFFBOARD"
 
 
 class CentralCommandNode(Node):
@@ -31,6 +33,7 @@ class CentralCommandNode(Node):
         super().__init__("central_command_node")
 
         # --- MAVROS: service clients and state subscription ---
+        self._set_mode_client = self.create_client(SetMode, "/mavros/set_mode")
         self._arming_client = self.create_client(CommandBool, "/mavros/cmd/arming")
         self._takeoff_client = self.create_client(
             CommandTOLLocal, "/mavros/cmd/takeoff_local"
@@ -55,23 +58,68 @@ class CentralCommandNode(Node):
             10,
         )
 
-        # Startup sequence: idle -> arming -> takeoff_sent -> takeoff_wait -> landing_sent -> landing_wait -> done
+        # Startup sequence: idle -> set_mode -> arming -> takeoff_sent -> takeoff_wait -> landing_sent -> landing_wait -> done
         self._phase = "idle"
 
         self.declare_parameter("takeoff_altitude_m", DEFAULT_TAKEOFF_ALTITUDE_M)
+        self.declare_parameter("flight_mode", DEFAULT_FLIGHT_MODE)
 
         # Start sequence shortly after bringup so clients/subscribers are ready
         self._start_timer = self.create_timer(1.0, self._on_start_timer)
 
         self.get_logger().info(
-            "Central Command node started. Will arm, takeoff, then land via MAVROS."
+            "Central Command node started. Will set mode, arm, takeoff, then land via MAVROS."
         )
 
     def _on_start_timer(self):
         self._start_timer.cancel()
         if self._phase != "idle":
             return
+        self._phase = "set_mode"
+        self._call_set_mode()
+
+    def _call_set_mode(self):
+        """Set flight mode to OFFBOARD (PX4) so takeoff is accepted."""
+        if not self._set_mode_client.service_is_ready():
+            self.get_logger().warn("MAVROS set_mode service not available, retrying in 2s.")
+            self._start_timer = self.create_timer(2.0, self._on_retry_set_mode)
+            return
+        mode = self.get_parameter("flight_mode").value
+        self.get_logger().info("Setting flight mode to '%s' via MAVROS." % mode)
+        req = SetMode.Request()
+        req.base_mode = 0
+        req.custom_mode = mode
+        self._set_mode_client.call_async(req).add_done_callback(self._on_set_mode_response)
+
+    def _on_retry_set_mode(self):
+        self._start_timer.cancel()
+        if self._phase != "set_mode":
+            return
+        self._call_set_mode()
+
+    def _on_set_mode_response(self, future):
+        if self._phase != "set_mode":
+            return
+        try:
+            response = future.result()
+            if not response.mode_sent:
+                self.get_logger().error("MAVROS set_mode rejected (mode_sent=false).")
+                self._phase = "idle"
+                self.publish_status("error", "MAVROS set_mode rejected")
+                return
+            self.get_logger().info("Flight mode set. Arming via MAVROS.")
+            self._defer_timer = self.create_timer(0.2, self._deferred_arm)
+        except Exception as e:
+            self.get_logger().error("Set mode service call failed: %s" % str(e))
+            self._phase = "idle"
+            self.publish_status("error", str(e))
+
+    def _deferred_arm(self):
+        if self._phase != "set_mode":
+            self._defer_timer.cancel()
+            return
         self._phase = "arming"
+        self._defer_timer.cancel()
         self._call_arm_service()
 
     def _call_arm_service(self):
