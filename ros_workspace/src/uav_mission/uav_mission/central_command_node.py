@@ -112,9 +112,11 @@ class CentralCommandNode(Node):
 
     def _deferred_takeoff(self):
         """One-shot: run takeoff outside the arm response callback to avoid rclpy future errors."""
-        self._defer_timer.cancel()
         if self._phase != "arming":
+            self._defer_timer.cancel()
             return
+        self._phase = "takeoff_sent"  # guard: prevent duplicate timer fire from sending takeoff twice
+        self._defer_timer.cancel()
         self._call_takeoff_service()
 
     def _call_takeoff_service(self):
@@ -133,7 +135,6 @@ class CentralCommandNode(Node):
         req.yaw = 0.0
         req.position = Vector3(x=0.0, y=0.0, z=float(alt))
         self._takeoff_client.call_async(req).add_done_callback(self._on_takeoff_response)
-        self._phase = "takeoff_sent"
 
     def _on_takeoff_response(self, future):
         if self._phase != "takeoff_sent":
@@ -169,9 +170,11 @@ class CentralCommandNode(Node):
 
     def _deferred_land(self):
         """One-shot: run land outside the extended_state callback to avoid rclpy future errors."""
-        self._defer_timer.cancel()
         if self._phase != "landing_sent":
+            self._defer_timer.cancel()
             return
+        self._phase = "landing_calling"  # guard: prevent duplicate timer fire from sending land twice
+        self._defer_timer.cancel()
         self._call_land_service()
 
     def _call_land_service(self):
@@ -190,7 +193,7 @@ class CentralCommandNode(Node):
         self._land_client.call_async(req).add_done_callback(self._on_land_response)
 
     def _on_land_response(self, future):
-        if self._phase != "landing_sent":
+        if self._phase not in ("landing_sent", "landing_calling"):
             return
         try:
             response = future.result()
