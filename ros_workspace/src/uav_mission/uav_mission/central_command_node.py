@@ -102,11 +102,20 @@ class CentralCommandNode(Node):
                 self.publish_status("error", "MAVROS rejected arm")
                 return
             self.get_logger().info("Arm accepted. Sending takeoff via MAVROS.")
-            self._call_takeoff_service()
+            # Defer takeoff to next spin iteration to avoid std::future_error in rclpy
+            # (calling another async service from inside this callback can double-satisfy a promise)
+            self._defer_timer = self.create_timer(0.2, self._deferred_takeoff)
         except Exception as e:
             self.get_logger().error("Arm service call failed: %s" % str(e))
             self._phase = "idle"
             self.publish_status("error", str(e))
+
+    def _deferred_takeoff(self):
+        """One-shot: run takeoff outside the arm response callback to avoid rclpy future errors."""
+        self._defer_timer.cancel()
+        if self._phase != "arming":
+            return
+        self._call_takeoff_service()
 
     def _call_takeoff_service(self):
         """Request takeoff via MAVROS CommandTOLLocal (relative altitude)."""
@@ -149,7 +158,8 @@ class CentralCommandNode(Node):
                 return
             self.get_logger().info("Takeoff complete (in air). Sending LAND via MAVROS.")
             self._phase = "landing_sent"
-            self._call_land_service()
+            # Defer land to next spin iteration (same reason as deferred takeoff)
+            self._defer_timer = self.create_timer(0.2, self._deferred_land)
         elif self._phase == "landing_wait":
             if msg.landed_state != LANDED_STATE_ON_GROUND:
                 return
@@ -157,12 +167,19 @@ class CentralCommandNode(Node):
             self._phase = "done"
             self.publish_status("done", "")
 
+    def _deferred_land(self):
+        """One-shot: run land outside the extended_state callback to avoid rclpy future errors."""
+        self._defer_timer.cancel()
+        if self._phase != "landing_sent":
+            return
+        self._call_land_service()
+
     def _call_land_service(self):
         """Request land via MAVROS CommandTOL (land at current position)."""
         if not self._land_client.service_is_ready():
             self.get_logger().error("MAVROS land service not available.")
             self._phase = "idle"
-            self.publish_status("error", "land_unavailable", True, "MAVROS land service not ready")
+            self.publish_status("error", "MAVROS land service not ready")
             return
         req = CommandTOL.Request()
         req.min_pitch = 0.0
@@ -184,7 +201,7 @@ class CentralCommandNode(Node):
                 return
             self.get_logger().info("Land command accepted. Waiting for on-ground state.")
             self._phase = "landing_wait"
-            self.publish_status("landing", "landing", True, "")
+            self.publish_status("landing", "")
         except Exception as e:
             self.get_logger().error("Land service call failed: %s" % str(e))
             self._phase = "idle"
