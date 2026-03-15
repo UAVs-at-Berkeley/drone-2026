@@ -25,6 +25,7 @@ setup(
             "detection_node = uav_mission.detection_node:main",
             "camera_node = uav_mission.camera_node:main",
             "waypoint_node = uav_mission.waypoint_node:main",
+            "time_trial_node = uav_mission.time_trial_node:main",
         ],
     },
 )
