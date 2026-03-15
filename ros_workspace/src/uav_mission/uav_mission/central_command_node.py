@@ -1,22 +1,18 @@
 #!/usr/bin/env python3
 """
-Central Command Node - mission state machine and single authority for flight and camera.
+Central Command Node - arms, takeoff, and land via MAVROS.
 
-- On start: arms and takeoffs via MAVROS (/mavros/cmd/arming, /mavros/cmd/takeoff),
-  waits for in-air state from /mavros/extended_state, then sends RunWaypointMission
-  action goal to the waypoint node.
-- Sends action goals to Waypoint, Mapping, Detection, Camera nodes.
+- On start: arms via /mavros/cmd/arming, takeoff via /mavros/cmd/takeoff_local.
+- Waits for in-air state from /mavros/extended_state, then lands via /mavros/cmd/land.
 - Publishes mission status on /central_command/mission_status.
 """
 
 import rclpy
 from rclpy.node import Node
-from rclpy.action import ActionClient
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 from uav_msgs.msg import MissionStatus
-from uav_msgs.action import StartMapping, StartDetection, MoveCamera, RunWaypointMission
 from mavros_msgs.msg import ExtendedState
-from mavros_msgs.srv import CommandBool, CommandTOLLocal
+from mavros_msgs.srv import CommandBool, CommandTOLLocal, CommandTOL
 from geometry_msgs.msg import Vector3
 
 # MAVROS ExtendedState landed_state constants
@@ -39,6 +35,7 @@ class CentralCommandNode(Node):
         self._takeoff_client = self.create_client(
             CommandTOLLocal, "/mavros/cmd/takeoff_local"
         )
+        self._land_client = self.create_client(CommandTOL, "/mavros/cmd/land")
 
         qos_sensor = QoSProfile(
             depth=10,
@@ -52,21 +49,14 @@ class CentralCommandNode(Node):
             qos_sensor,
         )
 
-        # Action clients
-        self._waypoint_client = ActionClient(self, RunWaypointMission, "/waypoint/run_mission")
-        self._mapping_client = ActionClient(self, StartMapping, "/mapping/start")
-        self._detection_client = ActionClient(self, StartDetection, "/detection/start")
-        self._camera_client = ActionClient(self, MoveCamera, "/camera/move")
-
         self._status_pub = self.create_publisher(
             MissionStatus,
             "/central_command/mission_status",
             10,
         )
 
-        # Startup sequence state: idle -> arming -> takeoff_sent -> takeoff_wait -> waypoint_sent -> done
+        # Startup sequence: idle -> arming -> takeoff_sent -> takeoff_wait -> landing_sent -> landing_wait -> done
         self._phase = "idle"
-        self._waypoint_goal_handle = None
 
         self.declare_parameter("takeoff_altitude_m", DEFAULT_TAKEOFF_ALTITUDE_M)
 
@@ -74,7 +64,7 @@ class CentralCommandNode(Node):
         self._start_timer = self.create_timer(1.0, self._on_start_timer)
 
         self.get_logger().info(
-            "Central Command node started. Will arm and takeoff via MAVROS, then send RunWaypointMission to waypoint node."
+            "Central Command node started. Will arm, takeoff, then land via MAVROS."
         )
 
     def _on_start_timer(self):
@@ -154,40 +144,51 @@ class CentralCommandNode(Node):
             self.publish_status("error", "takeoff_failed", True, str(e))
 
     def _on_extended_state(self, msg: ExtendedState):
-        if self._phase != "takeoff_wait":
-            return
-        if msg.landed_state != LANDED_STATE_IN_AIR:
-            return
-        self.get_logger().info("Takeoff complete (in air). Sending RunWaypointMission to waypoint node.")
-        self._phase = "waypoint_sent"
-        self._send_waypoint_mission_goal()
+        if self._phase == "takeoff_wait":
+            if msg.landed_state != LANDED_STATE_IN_AIR:
+                return
+            self.get_logger().info("Takeoff complete (in air). Sending LAND via MAVROS.")
+            self._phase = "landing_sent"
+            self._call_land_service()
+        elif self._phase == "landing_wait":
+            if msg.landed_state != LANDED_STATE_ON_GROUND:
+                return
+            self.get_logger().info("Land complete.")
+            self._phase = "done"
+            self.publish_status("done", "landed", False, "")
 
-    def _send_waypoint_mission_goal(self):
-        self._waypoint_client.wait_for_server(timeout_sec=5.0)
-        goal_msg = RunWaypointMission.Goal()
-        goal_msg.placeholder = 0
-        self._waypoint_client.send_goal_async(
-            goal_msg,
-            feedback_callback=self._waypoint_feedback_callback,
-        ).add_done_callback(self._waypoint_goal_done_callback)
-
-    def _waypoint_feedback_callback(self, feedback_msg):
-        fb = feedback_msg.feedback
-        self.get_logger().info(
-            "Waypoint mission feedback: phase=%s waypoint %.0f/%.0f"
-            % (fb.phase, fb.current_waypoint_index, fb.total_waypoints),
-            throttle_duration_sec=2.0,
-        )
-
-    def _waypoint_goal_done_callback(self, future):
-        goal_handle = future.result()
-        if not goal_handle.accepted:
-            self.get_logger().warn("Waypoint node rejected RunWaypointMission goal.")
-            self.publish_status("waypoint", "rejected", False, "Waypoint goal rejected")
+    def _call_land_service(self):
+        """Request land via MAVROS CommandTOL (land at current position)."""
+        if not self._land_client.service_is_ready():
+            self.get_logger().error("MAVROS land service not available.")
+            self._phase = "idle"
+            self.publish_status("error", "land_unavailable", True, "MAVROS land service not ready")
             return
-        self._waypoint_goal_handle = goal_handle
-        self.get_logger().info("RunWaypointMission goal accepted by waypoint node.")
-        self.publish_status("waypoint", "running", False, "")
+        req = CommandTOL.Request()
+        req.min_pitch = 0.0
+        req.yaw = 0.0
+        req.latitude = float("nan")
+        req.longitude = float("nan")
+        req.altitude = 0.0
+        self._land_client.call_async(req).add_done_callback(self._on_land_response)
+
+    def _on_land_response(self, future):
+        if self._phase != "landing_sent":
+            return
+        try:
+            response = future.result()
+            if not response.success:
+                self.get_logger().error("MAVROS land rejected (result=%u)." % response.result)
+                self._phase = "idle"
+                self.publish_status("error", "land_rejected", True, "MAVROS rejected land")
+                return
+            self.get_logger().info("Land command accepted. Waiting for on-ground state.")
+            self._phase = "landing_wait"
+            self.publish_status("landing", "landing", True, "")
+        except Exception as e:
+            self.get_logger().error("Land service call failed: %s" % str(e))
+            self._phase = "idle"
+            self.publish_status("error", "land_failed", True, str(e))
 
     def publish_status(
         self,
