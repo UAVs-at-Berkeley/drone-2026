@@ -99,21 +99,21 @@ class CentralCommandNode(Node):
             if not response.success:
                 self.get_logger().error("MAVROS arm rejected (result=%u)." % response.result)
                 self._phase = "idle"
-                self.publish_status("error", "arm_rejected", True, "MAVROS rejected arm")
+                self.publish_status("error", "MAVROS rejected arm")
                 return
             self.get_logger().info("Arm accepted. Sending takeoff via MAVROS.")
             self._call_takeoff_service()
         except Exception as e:
             self.get_logger().error("Arm service call failed: %s" % str(e))
             self._phase = "idle"
-            self.publish_status("error", "arm_failed", True, str(e))
+            self.publish_status("error", str(e))
 
     def _call_takeoff_service(self):
         """Request takeoff via MAVROS CommandTOLLocal (relative altitude)."""
         if not self._takeoff_client.service_is_ready():
             self.get_logger().error("MAVROS takeoff service not available.")
             self._phase = "idle"
-            self.publish_status("error", "takeoff_unavailable", True, "MAVROS takeoff service not ready")
+            self.publish_status("error", "MAVROS takeoff service not ready")
             return
         alt = self.get_parameter("takeoff_altitude_m").value
         self.get_logger().info("Sending TAKEOFF command via MAVROS (alt=%.1f m)." % alt)
@@ -134,14 +134,14 @@ class CentralCommandNode(Node):
             if not response.success:
                 self.get_logger().error("MAVROS takeoff rejected (result=%u)." % response.result)
                 self._phase = "idle"
-                self.publish_status("error", "takeoff_rejected", True, "MAVROS rejected takeoff")
+                self.publish_status("error", "MAVROS rejected takeoff")
                 return
             self.get_logger().info("Takeoff command accepted. Waiting for in-air state.")
             self._phase = "takeoff_wait"
         except Exception as e:
             self.get_logger().error("Takeoff service call failed: %s" % str(e))
             self._phase = "idle"
-            self.publish_status("error", "takeoff_failed", True, str(e))
+            self.publish_status("error", str(e))
 
     def _on_extended_state(self, msg: ExtendedState):
         if self._phase == "takeoff_wait":
@@ -155,7 +155,7 @@ class CentralCommandNode(Node):
                 return
             self.get_logger().info("Land complete.")
             self._phase = "done"
-            self.publish_status("done", "landed", False, "")
+            self.publish_status("done", "")
 
     def _call_land_service(self):
         """Request land via MAVROS CommandTOL (land at current position)."""
@@ -180,7 +180,7 @@ class CentralCommandNode(Node):
             if not response.success:
                 self.get_logger().error("MAVROS land rejected (result=%u)." % response.result)
                 self._phase = "idle"
-                self.publish_status("error", "land_rejected", True, "MAVROS rejected land")
+                self.publish_status("error", "MAVROS rejected land")
                 return
             self.get_logger().info("Land command accepted. Waiting for on-ground state.")
             self._phase = "landing_wait"
@@ -188,19 +188,11 @@ class CentralCommandNode(Node):
         except Exception as e:
             self.get_logger().error("Land service call failed: %s" % str(e))
             self._phase = "idle"
-            self.publish_status("error", "land_failed", True, str(e))
+            self.publish_status("error", str(e))
 
-    def publish_status(
-        self,
-        current_mode: str,
-        phase: str,
-        movement_locked: bool,
-        last_error: str = "",
-    ):
+    def publish_status(self, current_mode: str, last_error: str = ""):
         msg = MissionStatus()
         msg.current_mode = current_mode
-        msg.phase = phase
-        msg.movement_locked = movement_locked
         msg.last_error = last_error
         self._status_pub.publish(msg)
 
