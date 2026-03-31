@@ -25,7 +25,7 @@ You first need to get the Docker image by following the steps below:
 After you have the docker image, the next step is to create a container from the image:
 
 ```zsh
-docker run --rm -it -p 5900:5900 143f0fd9033f
+docker run --rm -it -p 5900:5900 drone-sim-macos:latest
 ```
 
 * ```--rm``` removes the container instance after quitting
