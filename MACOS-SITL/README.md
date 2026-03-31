@@ -8,28 +8,17 @@ You first need to get the Docker image by following the steps below:
 
 1. Make sure you have Docker Desktop installed on your machine
 
-2. Open up Docker Desktop
+2. Make sure you have the latest version of this repo
 
-3. Open up a terminal session, and type the following:
+3. Open up Docker Desktop
 
-    ```zsh
-    docker pull ghcr.io/uavs-at-berkeley/drone-sim-macos:latest
-    ```
-
-    The above command pulls the Docker image that has already been built and uploaded to our club's Github Container Registry. You can see it under the "Packages" tab from the club's Github organization page. This way you won't have to spend time rebuilding the entire image on your machine.
-
-4. Run the following to check that you have successfully pulled the image:
+4. Open up a terminal session, navigate to `drone-2026/MACOS-SITL` and type the following:
 
     ```zsh
-    docker image ls
+    docker build -t drone-sim-macos:latest .
     ```
 
-    Make sure you see the following line:
-
-    ```zsh
-    IMAGE                           ID             DISK USAGE   CONTENT SIZE   EXTRA      
-    ghcr.io/uavs-at-berkeley/dro…   143f0fd9033f       17.2GB          4.8GB        
-    ```
+    This is going to take a while.
 
 ## Instantiating a container
 

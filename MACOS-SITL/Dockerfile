@@ -54,13 +54,10 @@ RUN mkdir -p /home/user/.vnc && \
     chmod +x /home/user/.vnc/xstartup && \
     chown -R user:user /home/user/.vnc
 
-# Set up Micro-XRCE DDS agent to allow for PX4 and ROS 2 integration
-RUN git clone -b v2.4.3 https://github.com/eProsima/Micro-XRCE-DDS-Agent.git /tmp/Micro-XRCE-DDS-Agent && \
-    cd /tmp/Micro-XRCE-DDS-Agent && \
-    mkdir build && \
-    cd build && \
-    cmake .. && make && make install && ldconfig /usr/local/lib/ && \
-    rm -rf /tmp/Micro-XRCE-DDS-Agent
+# Set up MAVROS to allow for PX4 and ROS 2 integration
+RUN apt-get update && apt-get install -y ros-jazzy-mavros  ros-jazzy-mavros-extras && \
+    /opt/ros/jazzy/lib/mavros/install_geographiclib_datasets.sh && \
+    rm -rf /var/lib/apt/lists/*
 
 # Build PX4 ROS 2 workspace
 USER user
@@ -75,10 +72,9 @@ RUN pip install --user -U --break-system-packages empy==3.3.4 pyros-genmsg setup
 
 # Container startup command
 # 1. Starts up a VNC server inside the container, which will then forward the Gazebo UI display to host machine's VNC client
-# 2. Starts MicroXRCEAgent in the background
-# 3. Starts tmux
+# 2. Starts tmux
 EXPOSE 5900
 EXPOSE 14550/udp
 WORKDIR /PX4-Autopilot
 RUN echo "export DISPLAY=:0" >> ~/.bashrc
-CMD ["/bin/bash", "-c", "vncserver :0 -geometry 1280x720 -SecurityTypes None -localhost no --I-KNOW-THIS-IS-INSECURE && MicroXRCEAgent udp4 -p 8888 & exec tmux"]   
+CMD ["/bin/bash", "-c", "vncserver :0 -geometry 1280x720 -SecurityTypes None -localhost no --I-KNOW-THIS-IS-INSECURE & exec tmux"]   
