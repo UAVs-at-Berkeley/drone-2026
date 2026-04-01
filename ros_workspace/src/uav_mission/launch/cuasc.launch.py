@@ -27,8 +27,8 @@ def generate_launch_description():
         ),
         Node(
             package="uav_mission",
-            executable="waypoint_node",
-            name="waypoint_node",
+            executable="time_trial_node",
+            name="time_trial_node",
             output="screen",
             parameters=[{"use_sim_time": LaunchConfiguration("use_sim_time")}],
         ),
