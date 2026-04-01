@@ -54,9 +54,11 @@ class HostPacket:
     available_satellites=0x0f,
     GNSS_microseconds=0x15060cb0,
     GNSS_week=0x08e6,
-    rel_height = 0x00002710,
-    command=0x14,
-    hex_string=""):
+            rel_height = 0x00002710,
+            command=0x14,
+            command_param=b"",
+            protocol_version=1,
+            hex_string=""):
         """Create a host packet.
 
         Args:
@@ -65,14 +67,17 @@ class HostPacket:
             carrier_*: Carrier attitude, acceleration, velocity and GNSS info.
             request: Sub-frame request code (usually 0x01).
             command: Pod operating mode / command (e.g. 0x14 = Euler angle control).
+            command_param: Bytes placed after the order byte (byte 70~S-3), e.g. OSD TT.
+            protocol_version: Protocol version byte (e.g. 2 for V0.2 per GCU doc).
             hex_string: If non-empty, use this full packet hex instead of building
                 one from the higher-level fields above.
         """
         if hex_string != "":
             self.hex_string = hex_string
             self.hex_bytes = bytes.fromhex(hex_string)
+            self.command_param = b""
         else:
-            self.version = 1
+            self.version = protocol_version & 0xFF
             self.roll = roll
             self.pitch = pitch
             self.yaw = yaw
@@ -96,6 +101,7 @@ class HostPacket:
             self.GNSS_week = GNSS_week
             self.rel_height = rel_height
             self.command = command
+            self.command_param = bytes(command_param) if command_param else b""
             '''
             0x00 - Null
             0x01 - Calibration
@@ -131,7 +137,7 @@ class HostPacket:
         # GCU Private Protocol: package from host computer
         # Byte 0-1: header 0xA8 0xE5, 2-3: length U16 LE, 4: version
         # Byte 5-36: main data frame (32 bytes), 37-68: sub data frame (32 bytes)
-        # Byte 69: order (command), 70..S-3: parameter (none for 0x14), S-2 S-1: CRC
+        # Byte 69: order (command), 70..S-3: parameter (empty for 0x14), S-2 S-1: CRC
         header = bytes([0xA8, 0xE5])
         version_byte = self.version.to_bytes(1, "little")
 
@@ -174,9 +180,10 @@ class HostPacket:
         )
 
         order_byte = (self.command & 0xFF).to_bytes(1, "little")
+        param_bytes = self.command_param if self.command_param else b""
 
         # Body for CRC: bytes 0 to S-3 (no CRC yet). Length field = total packet size.
-        body = header + b"\x00\x00" + version_byte + main_frame + sub_frame + order_byte
+        body = header + b"\x00\x00" + version_byte + main_frame + sub_frame + order_byte + param_bytes
         # Length (U16 LE) = total packet size (body + 2 for CRC)
         total_len = len(body) + 2
         body = body[:2] + struct.pack("<H", total_len) + body[4:]
@@ -417,6 +424,29 @@ class ResponsePacket:
 null_packet = HostPacket(hex_string="A8E5480001000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000028B2")
 #This is hard-coded for the Z1 mini gimbal.
 
+
+def _osd_off_host_packet() -> HostPacket:
+    """GCU Private Protocol: order 0x73, TT 0x00 — disable on-screen overlay (per XF appendix)."""
+    return HostPacket(
+        command=0x73,
+        command_param=b"\x00",
+        protocol_version=2,
+        roll=0,
+        pitch=0,
+        yaw=0,
+        status=0,
+        request=0,
+        sub_frame_header=0,
+        carrier_longitude=0,
+        carrier_latitude=0,
+        carrier_altitude=0,
+        available_satellites=0,
+        GNSS_microseconds=0,
+        GNSS_week=0,
+        rel_height=0,
+    )
+
+
 class GimbalCamera:
     """Control Z-1Mini gimbal via GCU private protocol (UDP) and capture video via RTSP.
     Video stream address per Z-1Mini manual: rtsp://<ip> (port 554). Thread-safe for
@@ -453,6 +483,29 @@ class GimbalCamera:
         local_port = (bind_port if bind_port is not None else port + 1)
         self.sock.bind(("0.0.0.0", local_port))
         self.sock.settimeout(socket_timeout)
+        self._send_osd_off_at_init()
+
+    def _send_osd_off_at_init(self) -> None:
+        """Send null + OSD-off (0x73 0x00) so RTSP frames omit the GCU overlay when supported."""
+        if self._closed:
+            return
+        pkt = _osd_off_host_packet()
+        try:
+            self.sock.sendto(null_packet.hex_bytes, (self.ip, self.port))
+            self.sock.sendto(pkt.hex_bytes, (self.ip, self.port))
+            data = self.sock.recv(256)
+        except socket.timeout:
+            self._log.warn("OSD-off command: no response from %s (overlay may stay on)", self.ip)
+            return
+        except OSError as e:
+            self._log.warn("OSD-off command error: %s", e)
+            return
+        response = ResponsePacket(raw_bytes=data)
+        if response.is_valid():
+            with self._lock:
+                self.most_recent_feedback = response
+        else:
+            self._log.warn("OSD-off command: invalid GCU response (CRC)")
 
     def __enter__(self) -> "GimbalCamera":
         return self
