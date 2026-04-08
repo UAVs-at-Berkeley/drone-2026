@@ -7,6 +7,11 @@
 #
 # Prerequisite: ROS 2 and this workspace are already sourced in the shell.
 #
+# Usage: ./start_drone.sh [mission_yaml]
+#   mission_yaml — optional path (or resolvable filename) for the mission YAML passed to
+#   cuasc.launch.py as mission_file. If omitted, the launch file default applies
+#   (package missions/example_mission.yaml).
+#
 # Losing SSH mid-flight: a bare SSH session sends SIGHUP when the link drops, which
 # can kill this script and all ros2 children. Use tmux (see docs/tmux-drone-session.md):
 # detach before link loss, attach from a new SSH when back in range. End flight with
@@ -58,4 +63,8 @@ BAG_PID=$!
 echo "start_drone.sh: recording to $BAG_DIR/$BAG_STEM (bag PID $BAG_PID; stop recording only: kill -INT $BAG_PID)"
 
 # --- 4) mission stack — when this process exits, cleanup stops bag then mavros
-ros2 launch uav_mission cuasc.launch.py
+LAUNCH_ARGS=()
+if [[ -n "${1:-}" ]]; then
+  LAUNCH_ARGS+=(mission_file:="$1")
+fi
+ros2 launch uav_mission cuasc.launch.py "${LAUNCH_ARGS[@]}"
