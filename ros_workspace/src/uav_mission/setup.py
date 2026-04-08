@@ -20,6 +20,7 @@ setup(
     tests_require=["pytest"],
     entry_points={
         "console_scripts": [
+            "offboard_takeoff_server = uav_mission.offboard_takeoff_server:main",
             "central_command_node = uav_mission.central_command_node:main",
             "mapping_node = uav_mission.mapping_node:main",
             "detection_node = uav_mission.detection_node:main",

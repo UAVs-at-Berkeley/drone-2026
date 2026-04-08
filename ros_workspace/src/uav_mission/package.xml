@@ -8,6 +8,7 @@
   <license>MIT</license>
 
   <depend>rclpy</depend>
+  <depend>action_msgs</depend>
   <depend>uav_msgs</depend>
   <depend>mavros_msgs</depend>
   <depend>geographic_msgs</depend>

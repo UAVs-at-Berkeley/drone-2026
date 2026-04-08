@@ -28,6 +28,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "action/StartDetection.action"
   "action/MoveCamera.action"
   "action/RunWaypointMission.action"
+  "action/OffboardTakeoff.action"
   DEPENDENCIES sensor_msgs geometry_msgs std_msgs
 )
 

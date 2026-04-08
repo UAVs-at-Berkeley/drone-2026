@@ -1,0 +1,10 @@
+# Goal: local ENU setpoint height (m) for offboard climb (same convention as MAVROS local position).
+float64 takeoff_altitude_m
+---
+# Result
+bool success
+string message
+---
+# Feedback
+string phase
+string detail
