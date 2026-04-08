@@ -1,0 +1,8 @@
+# Example full mission — ensure all action servers and MAVROS are running.
+mission:
+  steps:
+    - takeoff
+    - time_trial
+    - object_localization
+    - return_to_home
+    - land

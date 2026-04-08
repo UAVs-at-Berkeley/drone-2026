@@ -8,14 +8,24 @@ Usage (from ros_workspace):
 
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
-from launch.substitutions import LaunchConfiguration
+from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
+from launch_ros.substitutions import FindPackageShare
 
 
 def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument("use_sim_time", default_value="false", description="Use simulation time"),
         DeclareLaunchArgument("takeoff_altitude_m", default_value="2.0", description="Offboard takeoff height (m, local ENU z)"),
+        DeclareLaunchArgument(
+            "mission_file",
+            default_value=PathJoinSubstitution([
+                FindPackageShare("uav_mission"),
+                "missions",
+                "example_mission.yaml",
+            ]),
+            description="Mission YAML path (empty string in overrides = takeoff-only in node)",
+        ),
         DeclareLaunchArgument("gimbal_ip", default_value="192.168.144.108", description="Gimbal/camera GCU IP"),
         DeclareLaunchArgument("gimbal_port", default_value="2337", description="Gimbal UDP control port"),
         DeclareLaunchArgument("publish_image_hz", default_value="30.0", description="Image publish rate (Hz)"),
@@ -28,13 +38,42 @@ def generate_launch_description():
         ),
         Node(
             package="uav_mission",
+            executable="offboard_land_server",
+            name="offboard_land_server",
+            output="screen",
+            parameters=[{"use_sim_time": LaunchConfiguration("use_sim_time")}],
+        ),
+        Node(
+            package="uav_mission",
+            executable="return_to_home_server",
+            name="return_to_home_server",
+            output="screen",
+            parameters=[{"use_sim_time": LaunchConfiguration("use_sim_time")}],
+        ),
+        Node(
+            package="uav_mission",
             executable="central_command_node",
             name="central_command_node",
             output="screen",
             parameters=[
                 {"use_sim_time": LaunchConfiguration("use_sim_time")},
                 {"takeoff_altitude_m": LaunchConfiguration("takeoff_altitude_m")},
+                {"mission_file": LaunchConfiguration("mission_file")},
             ],
+        ),
+        Node(
+            package="uav_mission",
+            executable="time_trial_node",
+            name="time_trial_node",
+            output="screen",
+            parameters=[{"use_sim_time": LaunchConfiguration("use_sim_time")}],
+        ),
+        Node(
+            package="uav_mission",
+            executable="object_localization_node",
+            name="object_localization_node",
+            output="screen",
+            parameters=[{"use_sim_time": LaunchConfiguration("use_sim_time")}],
         ),
         Node(
             package="uav_mission",

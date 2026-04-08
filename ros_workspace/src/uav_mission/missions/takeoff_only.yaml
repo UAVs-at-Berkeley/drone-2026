@@ -1,0 +1,4 @@
+# Minimal mission: offboard takeoff only (no land).
+mission:
+  steps:
+    - takeoff

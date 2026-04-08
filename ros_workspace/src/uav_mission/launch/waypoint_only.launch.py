@@ -10,14 +10,24 @@ Usage (from ros_workspace):
 
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
-from launch.substitutions import LaunchConfiguration
+from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
+from launch_ros.substitutions import FindPackageShare
 
 
 def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument("use_sim_time", default_value="false", description="Use simulation time"),
         DeclareLaunchArgument("takeoff_altitude_m", default_value="2.0", description="Offboard takeoff height (m, local ENU z)"),
+        DeclareLaunchArgument(
+            "mission_file",
+            default_value=PathJoinSubstitution([
+                FindPackageShare("uav_mission"),
+                "missions",
+                "takeoff_only.yaml",
+            ]),
+            description="Mission YAML path",
+        ),
         Node(
             package="uav_mission",
             executable="offboard_takeoff_server",
@@ -33,6 +43,7 @@ def generate_launch_description():
             parameters=[
                 {"use_sim_time": LaunchConfiguration("use_sim_time")},
                 {"takeoff_altitude_m": LaunchConfiguration("takeoff_altitude_m")},
+                {"mission_file": LaunchConfiguration("mission_file")},
             ],
         ),
         Node(

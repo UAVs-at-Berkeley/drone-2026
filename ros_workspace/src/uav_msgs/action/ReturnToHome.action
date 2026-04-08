@@ -1,0 +1,10 @@
+# Goal: MAVROS custom mode for RTL (PX4 typical: AUTO.RTL)
+string custom_mode
+---
+# Result
+bool success
+string message
+---
+# Feedback
+string phase
+string detail

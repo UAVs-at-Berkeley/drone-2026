@@ -1,0 +1,11 @@
+# Goal: MAVROS land command (see mavros_msgs/srv/CommandTOL)
+float64 min_pitch
+float64 yaw
+---
+# Result
+bool success
+string message
+---
+# Feedback
+string phase
+string detail
