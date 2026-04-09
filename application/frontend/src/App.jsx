@@ -52,7 +52,11 @@ export default function App() {
     try {
       const next = await api.connect();
       setStatus(next);
-      setInfo("Connected to drone.");
+      if (next.sshConnected) {
+        setInfo("Connected to drone.");
+      } else {
+        setInfo(next.lastError || "Could not connect. Check backend .env and logs.");
+      }
     } catch (error) {
       setInfo(error.message);
     } finally {

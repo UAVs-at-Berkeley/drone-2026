@@ -18,6 +18,8 @@ export class DroneSessionManager {
     this.state = { ...defaultState };
     this.client = null;
     this.sftp = null;
+    /** Remote user's $HOME from the drone (used to expand ~/ in SFTP paths). */
+    this.remoteHome = "";
   }
 
   getState() {
@@ -29,14 +31,35 @@ export class DroneSessionManager {
   }
 
   canConnect() {
-    return Boolean(config.droneHost && config.droneUser && config.privateKeyPath);
+    const hasAuth = Boolean(config.privateKeyPath || config.sshPassword);
+    return Boolean(config.droneHost && config.droneUser && hasAuth);
+  }
+
+  buildConnectOptions() {
+    const connectOpts = {
+      host: config.droneHost,
+      port: config.dronePort,
+      username: config.droneUser,
+      readyTimeout: 8000,
+    };
+    if (config.privateKeyPath) {
+      connectOpts.privateKey = fs.readFileSync(expandHomePath(config.privateKeyPath), "utf8");
+      if (config.privateKeyPassphrase) {
+        connectOpts.passphrase = config.privateKeyPassphrase;
+      }
+    }
+    if (config.sshPassword) {
+      connectOpts.password = config.sshPassword;
+    }
+    return connectOpts;
   }
 
   async connect() {
     if (!this.canConnect()) {
       this.setState({
         connectionState: "disconnected",
-        lastError: "Missing DRONE_HOST, DRONE_USER, or DRONE_PRIVATE_KEY_PATH.",
+        lastError:
+          "Missing DRONE_HOST, DRONE_USER, and either DRONE_PRIVATE_KEY_PATH or DRONE_SSH_PASSWORD.",
       });
       return this.getState();
     }
@@ -46,37 +69,48 @@ export class DroneSessionManager {
     }
 
     this.setState({ connectionState: "connecting", lastError: "" });
-    const privateKey = fs.readFileSync(expandHomePath(config.privateKeyPath), "utf8");
+    const connectOpts = this.buildConnectOptions();
     const client = new Client();
 
-    await new Promise((resolve, reject) => {
-      client
-        .on("ready", resolve)
-        .on("error", reject)
-        .on("close", () => {
-          this.setState({
-            sshConnected: false,
-            connectionState: this.state.inFlight ? "in_flight_disconnected" : "disconnected",
-          });
-        })
-        .connect({
-          host: config.droneHost,
-          port: config.dronePort,
-          username: config.droneUser,
-          privateKey,
-          readyTimeout: 8000,
-        });
-    });
+    try {
+      await new Promise((resolve, reject) => {
+        client
+          .on("ready", resolve)
+          .on("error", reject)
+          .on("close", () => {
+            this.setState({
+              sshConnected: false,
+              connectionState: this.state.inFlight ? "in_flight_disconnected" : "disconnected",
+            });
+          })
+          .connect(connectOpts);
+      });
 
-    this.client = client;
-    this.sftp = new SftpClient();
-    await this.sftp.connect({
-      host: config.droneHost,
-      port: config.dronePort,
-      username: config.droneUser,
-      privateKey,
-      readyTimeout: 8000,
-    });
+      this.client = client;
+      this.sftp = new SftpClient();
+      await this.sftp.connect({ ...connectOpts });
+    } catch (err) {
+      client.end();
+      if (this.sftp) {
+        await this.sftp.end().catch(() => {});
+        this.sftp = null;
+      }
+      this.client = null;
+      this.remoteHome = "";
+      const message = err?.message || String(err);
+      const hint =
+        /All configured authentication methods failed/i.test(message)
+          ? " Server rejected SSH auth: wrong password (DRONE_SSH_PASSWORD), wrong user, or for key auth check ~/.ssh/authorized_keys and DRONE_PRIVATE_KEY_PASSPHRASE."
+          : "";
+      this.setState({
+        connectionState: "disconnected",
+        sshConnected: false,
+        lastError: `${message}${hint}`,
+      });
+      throw err;
+    }
+
+    await this.cacheRemoteHome();
 
     const now = new Date().toISOString();
     this.setState({
@@ -89,6 +123,37 @@ export class DroneSessionManager {
     return this.getState();
   }
 
+  /**
+   * SFTP does not expand "~" like a shell. Resolve ~/... using the remote user's $HOME.
+   */
+  resolveRemotePath(p) {
+    if (!p || typeof p !== "string") {
+      return p;
+    }
+    if (p.startsWith("~/")) {
+      if (!this.remoteHome) {
+        throw new Error(
+          "Remote $HOME is unknown; cannot expand ~ in paths. Reconnect or use an absolute DRONE_MISSION_DIR."
+        );
+      }
+      const rest = p.slice(2).replace(/^\/+/, "");
+      return rest ? `${this.remoteHome}/${rest}` : this.remoteHome;
+    }
+    if (p === "~") {
+      return this.remoteHome || p;
+    }
+    return p;
+  }
+
+  async cacheRemoteHome() {
+    const { stdout, code } = await this.exec('printf %s "$HOME"');
+    const home = stdout.trim();
+    if (!home || (code !== undefined && code !== 0)) {
+      throw new Error("Could not read remote $HOME over SSH.");
+    }
+    this.remoteHome = home;
+  }
+
   async disconnect() {
     if (this.sftp) {
       await this.sftp.end().catch(() => {});
@@ -98,6 +163,7 @@ export class DroneSessionManager {
       this.client.end();
       this.client = null;
     }
+    this.remoteHome = "";
     this.setState({
       sshConnected: false,
       connectionState: this.state.inFlight ? "in_flight_disconnected" : "disconnected",
@@ -150,7 +216,8 @@ export class DroneSessionManager {
     if (!this.sftp) {
       throw new Error("SFTP is not connected.");
     }
-    await this.sftp.mkdir(config.missionDir, true);
+    const missionDir = this.resolveRemotePath(config.missionDir);
+    await this.sftp.mkdir(missionDir, true);
   }
 
   async uploadMission(filename, yamlContent) {
@@ -158,7 +225,8 @@ export class DroneSessionManager {
       throw new Error("SFTP is not connected.");
     }
     await this.ensureRemoteMissionDir();
-    const remotePath = `${config.missionDir}/${filename}`;
+    const missionDir = this.resolveRemotePath(config.missionDir);
+    const remotePath = `${missionDir.replace(/\/+$/, "")}/${filename}`;
     await this.sftp.put(Buffer.from(yamlContent, "utf8"), remotePath);
     return remotePath;
   }
