@@ -30,7 +30,8 @@ app.post("/drone/connect", async (_req, res) => {
     const state = await manager.connect();
     res.json(state);
   } catch (error) {
-    res.status(500).json({ error: error.message, state: manager.getState() });
+    const state = manager.getState();
+    res.status(500).json({ error: state.lastError || error.message, state });
   }
 });
 
@@ -83,4 +84,10 @@ app.post("/flight/stop", async (_req, res) => {
 app.listen(config.port, () => {
   // eslint-disable-next-line no-console
   console.log(`Drone control backend listening on http://localhost:${config.port}`);
+  if (!config.droneHost || !config.droneUser || (!config.privateKeyPath && !config.sshPassword)) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      "Drone SSH not configured: set DRONE_HOST, DRONE_USER, and either DRONE_PRIVATE_KEY_PATH or DRONE_SSH_PASSWORD in application/backend/.env (then restart the backend)."
+    );
+  }
 });
