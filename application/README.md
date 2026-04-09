@@ -4,7 +4,7 @@ Local web app for controlling the drone without manually SSHing and running scri
 
 ## Features (MVP)
 
-- Connect to fixed drone host over SSH.
+- Connect to fixed drone host over SSH (key, `.env` password, and/or password typed in the UI before Connect).
 - Show current connection and flight state.
 - Edit and save mission YAML to drone mission directory.
 - Start flight (`start_drone.sh <mission>` inside remote tmux session).
@@ -46,8 +46,9 @@ Default URLs:
 ## API Endpoints
 
 - `GET /health`
+- `GET /drone/prefill` — returns `{ sshPassword }` from `DRONE_SSH_PASSWORD` for UI autofill (any client on the same machine can read it; keep the backend local-only).
 - `GET /drone/status`
-- `POST /drone/connect`
+- `POST /drone/connect` — optional JSON body `{ "password": "..." }` (non-empty overrides `.env` for that session; stored server-side for reconnect until disconnect)
 - `POST /mission/save`
 - `POST /flight/start`
 - `POST /flight/stop`

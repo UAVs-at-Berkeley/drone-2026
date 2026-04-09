@@ -20,6 +20,8 @@ export class DroneSessionManager {
     this.sftp = null;
     /** Remote user's $HOME from the drone (used to expand ~/ in SFTP paths). */
     this.remoteHome = "";
+    /** Last SSH password used successfully (UI or .env), for reconnect without resending from client. */
+    this.sessionPassword = null;
   }
 
   getState() {
@@ -30,12 +32,30 @@ export class DroneSessionManager {
     this.state = { ...this.state, ...patch };
   }
 
-  canConnect() {
-    const hasAuth = Boolean(config.privateKeyPath || config.sshPassword);
-    return Boolean(config.droneHost && config.droneUser && hasAuth);
+  /**
+   * Non-empty password from the current connect request, else saved session, else .env.
+   */
+  resolveEffectivePassword(options = {}) {
+    const fromRequest = options.password;
+    if (typeof fromRequest === "string" && fromRequest.length > 0) {
+      return fromRequest;
+    }
+    if (this.sessionPassword) {
+      return this.sessionPassword;
+    }
+    return config.sshPassword || "";
   }
 
-  buildConnectOptions() {
+  canAttemptConnect(effectivePassword) {
+    if (!config.droneHost || !config.droneUser) {
+      return false;
+    }
+    const hasKey = Boolean(config.privateKeyPath);
+    const hasPwd = Boolean(effectivePassword && effectivePassword.length > 0);
+    return hasKey || hasPwd;
+  }
+
+  buildConnectOptions(effectivePassword) {
     const connectOpts = {
       host: config.droneHost,
       port: config.dronePort,
@@ -48,18 +68,19 @@ export class DroneSessionManager {
         connectOpts.passphrase = config.privateKeyPassphrase;
       }
     }
-    if (config.sshPassword) {
-      connectOpts.password = config.sshPassword;
+    if (effectivePassword) {
+      connectOpts.password = effectivePassword;
     }
     return connectOpts;
   }
 
-  async connect() {
-    if (!this.canConnect()) {
+  async connect(options = {}) {
+    const effectivePwd = this.resolveEffectivePassword(options);
+    if (!this.canAttemptConnect(effectivePwd)) {
       this.setState({
         connectionState: "disconnected",
         lastError:
-          "Missing DRONE_HOST, DRONE_USER, and either DRONE_PRIVATE_KEY_PATH or DRONE_SSH_PASSWORD.",
+          "Missing DRONE_HOST or DRONE_USER, or no auth: set DRONE_PRIVATE_KEY_PATH and/or enter an SSH password (or DRONE_SSH_PASSWORD in .env).",
       });
       return this.getState();
     }
@@ -69,7 +90,7 @@ export class DroneSessionManager {
     }
 
     this.setState({ connectionState: "connecting", lastError: "" });
-    const connectOpts = this.buildConnectOptions();
+    const connectOpts = this.buildConnectOptions(effectivePwd);
     const client = new Client();
 
     try {
@@ -100,7 +121,7 @@ export class DroneSessionManager {
       const message = err?.message || String(err);
       const hint =
         /All configured authentication methods failed/i.test(message)
-          ? " Server rejected SSH auth: wrong password (DRONE_SSH_PASSWORD), wrong user, or for key auth check ~/.ssh/authorized_keys and DRONE_PRIVATE_KEY_PASSPHRASE."
+          ? " Server rejected SSH auth: wrong SSH password (UI or DRONE_SSH_PASSWORD), wrong user, or for key auth check ~/.ssh/authorized_keys and DRONE_PRIVATE_KEY_PASSPHRASE."
           : "";
       this.setState({
         connectionState: "disconnected",
@@ -111,6 +132,8 @@ export class DroneSessionManager {
     }
 
     await this.cacheRemoteHome();
+
+    this.sessionPassword = effectivePwd.length > 0 ? effectivePwd : null;
 
     const now = new Date().toISOString();
     this.setState({
@@ -164,6 +187,7 @@ export class DroneSessionManager {
       this.client = null;
     }
     this.remoteHome = "";
+    this.sessionPassword = null;
     this.setState({
       sshConnected: false,
       connectionState: this.state.inFlight ? "in_flight_disconnected" : "disconnected",

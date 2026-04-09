@@ -14,8 +14,13 @@ async function request(path, options = {}) {
 
 export const api = {
   health: () => request("/health"),
+  prefill: () => request("/drone/prefill"),
   status: () => request("/drone/status"),
-  connect: () => request("/drone/connect", { method: "POST" }),
+  connect: (password = "") =>
+    request("/drone/connect", {
+      method: "POST",
+      body: JSON.stringify({ password: typeof password === "string" ? password : "" }),
+    }),
   saveMission: (filename, yamlText) =>
     request("/mission/save", {
       method: "POST",

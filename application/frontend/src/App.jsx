@@ -24,6 +24,18 @@ export default function App() {
   const [savedMissionPath, setSavedMissionPath] = useState("");
   const [info, setInfo] = useState("");
   const [busy, setBusy] = useState(false);
+  const [sshPassword, setSshPassword] = useState("");
+
+  useEffect(() => {
+    api
+      .prefill()
+      .then((data) => {
+        if (data?.sshPassword) {
+          setSshPassword(data.sshPassword);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const canSave = status.sshConnected && !busy;
   const canTakeoff = status.sshConnected && !status.inFlight && !busy && Boolean(savedMissionPath);
@@ -50,7 +62,7 @@ export default function App() {
     setBusy(true);
     setInfo("");
     try {
-      const next = await api.connect();
+      const next = await api.connect(sshPassword);
       setStatus(next);
       if (next.sshConnected) {
         setInfo("Connected to drone.");
@@ -112,11 +124,11 @@ export default function App() {
     const interval = setInterval(() => {
       refreshStatus();
       if (reconnectStates.has(status.connectionState) && status.inFlight) {
-        api.connect().catch(() => {});
+        api.connect(sshPassword).catch(() => {});
       }
     }, 3000);
     return () => clearInterval(interval);
-  }, [status.connectionState, status.inFlight]);
+  }, [status.connectionState, status.inFlight, sshPassword]);
 
   return (
     <main className="page">
@@ -128,6 +140,17 @@ export default function App() {
         <p>
           <strong>Flight:</strong> {status.inFlight ? "Active" : "Idle"}
         </p>
+        <label>
+          SSH password (optional if using key-only or .env password)
+          <input
+            type="password"
+            autoComplete="off"
+            value={sshPassword}
+            onChange={(e) => setSshPassword(e.target.value)}
+            disabled={busy || status.sshConnected}
+            placeholder="Leave empty to use key or DRONE_SSH_PASSWORD from .env"
+          />
+        </label>
         <button onClick={connect} disabled={busy || status.sshConnected}>
           {status.sshConnected ? "Connected" : "Connect to Drone"}
         </button>

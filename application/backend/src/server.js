@@ -14,6 +14,11 @@ app.get("/health", (_req, res) => {
   res.json({ ok: true });
 });
 
+/** Exposes DRONE_SSH_PASSWORD from .env for UI autofill only; use on trusted localhost. */
+app.get("/drone/prefill", (_req, res) => {
+  res.json({ sshPassword: config.sshPassword || "" });
+});
+
 app.get("/drone/status", async (_req, res) => {
   try {
     if (manager.getState().sshConnected) {
@@ -25,9 +30,11 @@ app.get("/drone/status", async (_req, res) => {
   }
 });
 
-app.post("/drone/connect", async (_req, res) => {
+app.post("/drone/connect", async (req, res) => {
   try {
-    const state = await manager.connect();
+    const raw = req.body?.password;
+    const password = typeof raw === "string" ? raw : "";
+    const state = await manager.connect({ password });
     res.json(state);
   } catch (error) {
     const state = manager.getState();
@@ -84,10 +91,15 @@ app.post("/flight/stop", async (_req, res) => {
 app.listen(config.port, () => {
   // eslint-disable-next-line no-console
   console.log(`Drone control backend listening on http://localhost:${config.port}`);
-  if (!config.droneHost || !config.droneUser || (!config.privateKeyPath && !config.sshPassword)) {
+  if (!config.droneHost || !config.droneUser) {
     // eslint-disable-next-line no-console
     console.warn(
-      "Drone SSH not configured: set DRONE_HOST, DRONE_USER, and either DRONE_PRIVATE_KEY_PATH or DRONE_SSH_PASSWORD in application/backend/.env (then restart the backend)."
+      "Drone SSH not configured: set DRONE_HOST and DRONE_USER in application/backend/.env (then restart the backend)."
+    );
+  } else if (!config.privateKeyPath && !config.sshPassword) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      "No DRONE_PRIVATE_KEY_PATH or DRONE_SSH_PASSWORD in .env; enter the SSH password in the web UI before Connect, or add one of those variables."
     );
   }
 });
