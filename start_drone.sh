@@ -3,7 +3,7 @@
 # When cuasc exits (flight over) or on Ctrl+C, the bag gets SIGINT first so the recording
 # finalizes cleanly, then mavros stops.
 #
-# Prerequisite: ROS 2 and this workspace are already sourced in the shell.
+# ROS is sourced by start_recording.sh and start_mission_stack.sh via start_ros.sh.
 #
 # Usage: ./start_drone.sh [mission_yaml]
 #   mission_yaml — optional path (or resolvable filename) for the mission YAML passed to

@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
+_START_REC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=start_ros.sh
+source "$_START_REC_DIR/start_ros.sh"
+
 # 1) Ensure eth0 is on the gimbal subnet (runtime ip(8), no netplan apply).
 # 2) Mavros in the background (does not block the rest).
 # 3) ros2 bag record in the background.
 #
-# Prerequisite: ROS 2 and this workspace are already sourced in the shell.
+# ROS is loaded via start_ros.sh (sourced above).
 #
 # Usage:
 #   - Sourced by start_drone.sh: defines drone_recording_steps and sets MAVROS_PID / BAG_PID
