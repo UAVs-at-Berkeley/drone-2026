@@ -308,8 +308,11 @@ export class DroneSessionManager {
   async stopFlight() {
     const sessionName = config.tmuxSession;
     this.setState({ connectionState: "flight_stopping" });
+    const grace = config.tmuxStopGraceSeconds;
     await this.exec(`tmux send-keys -t ${sessionName} C-c`);
-    await this.exec(`sleep 1; tmux has-session -t ${sessionName} 2>/dev/null && tmux kill-session -t ${sessionName} || true`);
+    await this.exec(
+      `sleep ${grace}; tmux has-session -t ${sessionName} 2>/dev/null && tmux kill-session -t ${sessionName} || true`
+    );
     this.setState({
       inFlight: false,
       tmuxSessionExists: false,

@@ -28,6 +28,15 @@ export const config = {
   tmuxSession: process.env.DRONE_TMUX_SESSION || "drone_control",
   /** Lines of tmux scrollback to return for the log panel (negative -S value). */
   tmuxCaptureLines: Math.max(100, Number(process.env.DRONE_TMUX_CAPTURE_LINES || 2500)),
+  /**
+   * After End mission sends Ctrl+C to tmux, wait this many seconds before kill-session
+   * so rosbag2 / shell traps can finalize metadata (was 1s; too short for clean bags).
+   */
+  tmuxStopGraceSeconds: (() => {
+    const raw = Number(process.env.DRONE_TMUX_STOP_GRACE_SECONDS ?? 20);
+    if (!Number.isFinite(raw)) return 20;
+    return Math.min(300, Math.max(0, Math.round(raw)));
+  })(),
   reconnectBackoffMs: Number(process.env.RECONNECT_BACKOFF_MS || 3000),
 };
 

@@ -9,6 +9,9 @@ source "$_START_REC_DIR/start_ros.sh"
 #
 # ROS is loaded via start_ros.sh (sourced above).
 #
+# Bag env (optional): BAG_STORAGE=sqlite3|mcap (default sqlite3), BAG_START_CHECK_DELAY (seconds).
+# See docs/rosbag2-recording-notes.md if bags are empty or lack metadata.yaml.
+#
 # Usage:
 #   - Sourced by start_drone.sh: defines drone_recording_steps and sets MAVROS_PID / BAG_PID
 #     in the parent shell for coordinated cleanup after the mission stack exits.
@@ -20,6 +23,9 @@ ETH_GIMBAL_IP="${ETH_GIMBAL_IP:-192.168.144.10/24}"
 BAG_DIR="${BAG_DIR:-/home/$USER/drone_workspace/bags}"
 MAVROS_READY_DELAY="${MAVROS_READY_DELAY:-2}"
 BAG_STEM="${BAG_STEM:-flight_$(date +%Y%m%d_%H%M%S)}"
+# sqlite3 tends to finalize more reliably than mcap for short runs; override with BAG_STORAGE=mcap if desired.
+BAG_STORAGE="${BAG_STORAGE:-sqlite3}"
+BAG_START_CHECK_DELAY="${BAG_START_CHECK_DELAY:-4}"
 
 drone_recording_steps() {
   # --- 1) eth0 on gimbal subnet
@@ -43,9 +49,19 @@ drone_recording_steps() {
 
   # --- 3) bag (background)
   mkdir -p "$BAG_DIR"
-  ros2 bag record -a -o "$BAG_DIR/$BAG_STEM" &
+  BAG_RECORD_LOG="$BAG_DIR/${BAG_STEM}_record_stderr.log"
+  # stderr log catches immediate plugin / DDS failures (empty bags, 0-byte files).
+  ros2 bag record -a --storage "$BAG_STORAGE" -o "$BAG_DIR/$BAG_STEM" 2>>"$BAG_RECORD_LOG" &
   BAG_PID=$!
-  echo "start_recording.sh: recording to $BAG_DIR/$BAG_STEM (bag PID $BAG_PID; stop recording only: kill -INT $BAG_PID)"
+  echo "start_recording.sh: recording to $BAG_DIR/$BAG_STEM (storage=$BAG_STORAGE, bag PID $BAG_PID)"
+  echo "start_recording.sh: recorder stderr log: $BAG_RECORD_LOG (stop recording only: kill -INT $BAG_PID)"
+
+  sleep "$BAG_START_CHECK_DELAY"
+  if ! kill -0 "$BAG_PID" 2>/dev/null; then
+    echo "start_recording.sh: ERROR — ros2 bag record exited within ${BAG_START_CHECK_DELAY}s (PID $BAG_PID dead)." >&2
+    echo "start_recording.sh: See $BAG_RECORD_LOG and run: ros2 doctor" >&2
+    ls -la "$BAG_DIR/$BAG_STEM" 2>/dev/null || echo "start_recording.sh: (no output directory yet)" >&2
+  fi
 }
 
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then

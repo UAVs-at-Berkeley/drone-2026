@@ -54,7 +54,7 @@ Default URLs:
 - `POST /mission/save`
 - `POST /flight/start` — full takeoff (`start_drone.sh`, requires `remoteMissionPath`)
 - `POST /flight/start-passive` — passive recording only (`start_recording.sh`)
-- `POST /flight/stop` — end mission or passive recording (same tmux session)
+- `POST /flight/stop` — end mission or passive recording (same tmux session). Sends Ctrl+C, waits **`DRONE_TMUX_STOP_GRACE_SECONDS`** (default **20**) for clean rosbag shutdown, then kills the tmux session if it still exists.
 - `GET /drone/tmux-log` — JSON `{ text, hasSession }`; snapshot of tmux pane scrollback (requires SSH connected). Size controlled by `DRONE_TMUX_CAPTURE_LINES` in backend `.env`.
 
 ## Hardware Validation Checklist
