@@ -78,6 +78,16 @@ app.post("/flight/start", async (req, res) => {
   }
 });
 
+app.post("/flight/start-passive", async (_req, res) => {
+  try {
+    await manager.connect();
+    const state = await manager.startPassiveRecording();
+    res.json({ ok: true, state });
+  } catch (error) {
+    res.status(500).json({ error: error.message, state: manager.getState() });
+  }
+});
+
 app.post("/flight/stop", async (_req, res) => {
   try {
     await manager.connect();

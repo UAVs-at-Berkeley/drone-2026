@@ -7,8 +7,9 @@ Local web app for controlling the drone without manually SSHing and running scri
 - Connect to fixed drone host over SSH (key, `.env` password, and/or password typed in the UI before Connect).
 - Show current connection and flight state.
 - Edit and save mission YAML to drone mission directory.
-- Start flight (`start_drone.sh <mission>` inside remote tmux session).
-- End flight (Ctrl+C equivalent via tmux `send-keys C-c`).
+- **Takeoff**: full stack (`start_drone.sh <mission>`) in remote tmux.
+- **Passive record**: recording stack only (`start_recording.sh`) in the same tmux session.
+- **End mission**: Ctrl+C equivalent via tmux — stops whichever mode is running (passive or full).
 - Reconnect-aware polling/status updates after link loss.
 
 ## Project Structure
@@ -22,7 +23,7 @@ Local web app for controlling the drone without manually SSHing and running scri
 - SSH access from laptop to drone: **key-based auth** (recommended) or **password** via `DRONE_SSH_PASSWORD` in `backend/.env` (plain text on disk).
 - `tmux` installed on drone:
   - `sudo apt update && sudo apt install -y tmux`
-- `start_drone.sh` exists on drone and is executable.
+- `start_drone.sh` and `start_recording.sh` exist on the drone (same directory as in `DRONE_*_SCRIPT_PATH`) and are executable.
 
 ## Setup
 
@@ -50,8 +51,9 @@ Default URLs:
 - `GET /drone/status`
 - `POST /drone/connect` — optional JSON body `{ "password": "..." }` (non-empty overrides `.env` for that session; stored server-side for reconnect until disconnect)
 - `POST /mission/save`
-- `POST /flight/start`
-- `POST /flight/stop`
+- `POST /flight/start` — full takeoff (`start_drone.sh`, requires `remoteMissionPath`)
+- `POST /flight/start-passive` — passive recording only (`start_recording.sh`)
+- `POST /flight/stop` — end mission or passive recording (same tmux session)
 
 ## Hardware Validation Checklist
 
@@ -59,11 +61,11 @@ Default URLs:
 2. Verify status changes to `Connected`.
 3. Edit mission YAML and click `Save Mission`.
 4. Confirm returned remote path is under `/ros_workspace/src/uav_mission/missions`.
-5. Click `Takeoff`; verify drone starts mission and status becomes in-flight.
+5. Click `Takeoff` or `Passive Record`; verify status shows the right activity and tmux session exists on the drone.
 6. Simulate temporary network loss (disconnect laptop Wi-Fi/ethernet briefly).
 7. Verify UI reports disconnected/reconnecting state.
 8. Restore network; verify state recovers.
-9. Click `End Flight`; verify script stops cleanly on drone.
+9. Click `End mission`; verify the running script stops cleanly on the drone.
 
 ## Notes
 

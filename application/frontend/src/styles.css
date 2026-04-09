@@ -23,6 +23,17 @@ body {
   margin-bottom: 16px;
 }
 
+.panel.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.panel.actions button {
+  margin-right: 0;
+}
+
 textarea,
 input {
   width: 100%;

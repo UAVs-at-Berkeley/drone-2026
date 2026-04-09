@@ -17,6 +17,7 @@ export default function App() {
     connectionState: "disconnected",
     sshConnected: false,
     inFlight: false,
+    runMode: null,
     lastError: "",
   });
   const [missionName, setMissionName] = useState("mission_ui.yaml");
@@ -39,15 +40,30 @@ export default function App() {
 
   const canSave = status.sshConnected && !busy;
   const canTakeoff = status.sshConnected && !status.inFlight && !busy && Boolean(savedMissionPath);
-  const canEndFlight = status.sshConnected && status.inFlight && !busy;
+  const canPassiveRecord = status.sshConnected && !status.inFlight && !busy;
+  const canEndMission = status.sshConnected && status.inFlight && !busy;
 
   const statusLabel = useMemo(() => {
     if (status.connectionState === "connected_idle") return "Connected";
-    if (status.connectionState === "reconnected_in_flight") return "In Flight";
-    if (status.connectionState === "in_flight_disconnected") return "Disconnected (Flight Running)";
+    if (status.connectionState === "reconnected_in_flight") {
+      if (status.runMode === "passive") return "Recording (passive)";
+      if (status.runMode === "full") return "Mission / takeoff";
+      return "Running";
+    }
+    if (status.connectionState === "in_flight_disconnected") {
+      if (status.runMode === "passive") return "Disconnected (passive recording)";
+      return "Disconnected (mission running)";
+    }
     if (status.connectionState === "connecting") return "Connecting";
     return "Disconnected";
-  }, [status.connectionState]);
+  }, [status.connectionState, status.runMode]);
+
+  const activityLabel = useMemo(() => {
+    if (!status.inFlight) return "Idle";
+    if (status.runMode === "passive") return "Passive recording";
+    if (status.runMode === "full") return "Full takeoff (recording + mission)";
+    return "Active";
+  }, [status.inFlight, status.runMode]);
 
   async function refreshStatus() {
     try {
@@ -96,7 +112,7 @@ export default function App() {
     setInfo("");
     try {
       await api.startFlight(savedMissionPath);
-      setInfo("Takeoff command started.");
+      setInfo("Takeoff started (start_drone.sh).");
       await refreshStatus();
     } catch (error) {
       setInfo(error.message);
@@ -105,12 +121,26 @@ export default function App() {
     }
   }
 
-  async function stopFlight() {
+  async function startPassiveRecording() {
+    setBusy(true);
+    setInfo("");
+    try {
+      await api.startPassiveRecording();
+      setInfo("Passive recording started (start_recording.sh).");
+      await refreshStatus();
+    } catch (error) {
+      setInfo(error.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function stopMission() {
     setBusy(true);
     setInfo("");
     try {
       await api.stopFlight();
-      setInfo("End flight signal sent.");
+      setInfo("End mission: stop signal sent to tmux (recording or full stack).");
       await refreshStatus();
     } catch (error) {
       setInfo(error.message);
@@ -138,7 +168,7 @@ export default function App() {
           <strong>Status:</strong> {statusLabel}
         </p>
         <p>
-          <strong>Flight:</strong> {status.inFlight ? "Active" : "Idle"}
+          <strong>Activity:</strong> {activityLabel}
         </p>
         <label>
           SSH password (optional if using key-only or .env password)
@@ -177,8 +207,11 @@ export default function App() {
         <button onClick={startFlight} disabled={!canTakeoff}>
           Takeoff
         </button>
-        <button onClick={stopFlight} disabled={!canEndFlight}>
-          End Flight
+        <button onClick={startPassiveRecording} disabled={!canPassiveRecord}>
+          Passive Record
+        </button>
+        <button onClick={stopMission} disabled={!canEndMission}>
+          End mission
         </button>
       </section>
 

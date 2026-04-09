@@ -7,6 +7,8 @@ const defaultState = {
   connectionState: "disconnected",
   sshConnected: false,
   inFlight: false,
+  /** null | "full" (start_drone) | "passive" (start_recording only) */
+  runMode: null,
   tmuxSessionExists: false,
   lastError: "",
   lastConnectedAt: null,
@@ -230,6 +232,7 @@ export class DroneSessionManager {
     this.setState({
       tmuxSessionExists: exists,
       inFlight: exists,
+      runMode: exists ? this.state.runMode : null,
       connectionState: exists ? "reconnected_in_flight" : "connected_idle",
       lastHeartbeatAt: now,
     });
@@ -261,16 +264,41 @@ export class DroneSessionManager {
     const startCommand = `${config.startScriptPath} "${escapedMission}"`;
     await this.exec(`tmux kill-session -t ${sessionName} 2>/dev/null || true`);
     await this.exec(`tmux new-session -d -s ${sessionName} '${startCommand}'`);
-    this.setState({ inFlight: true, tmuxSessionExists: true, connectionState: "reconnected_in_flight" });
+    this.setState({
+      inFlight: true,
+      tmuxSessionExists: true,
+      runMode: "full",
+      connectionState: "reconnected_in_flight",
+    });
     return this.getState();
   }
 
+  async startPassiveRecording() {
+    const sessionName = config.tmuxSession;
+    const startCommand = config.recordingScriptPath.replace(/'/g, "'\\''");
+    await this.exec(`tmux kill-session -t ${sessionName} 2>/dev/null || true`);
+    await this.exec(`tmux new-session -d -s ${sessionName} '${startCommand}'`);
+    this.setState({
+      inFlight: true,
+      tmuxSessionExists: true,
+      runMode: "passive",
+      connectionState: "reconnected_in_flight",
+    });
+    return this.getState();
+  }
+
+  /** Ends whatever is running in the tmux session (full mission stack or passive recording). */
   async stopFlight() {
     const sessionName = config.tmuxSession;
     this.setState({ connectionState: "flight_stopping" });
     await this.exec(`tmux send-keys -t ${sessionName} C-c`);
     await this.exec(`sleep 1; tmux has-session -t ${sessionName} 2>/dev/null && tmux kill-session -t ${sessionName} || true`);
-    this.setState({ inFlight: false, tmuxSessionExists: false, connectionState: "connected_idle" });
+    this.setState({
+      inFlight: false,
+      tmuxSessionExists: false,
+      runMode: null,
+      connectionState: "connected_idle",
+    });
     return this.getState();
   }
 }

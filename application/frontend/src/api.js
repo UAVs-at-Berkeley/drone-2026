@@ -31,5 +31,6 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ remoteMissionPath }),
     }),
+  startPassiveRecording: () => request("/flight/start-passive", { method: "POST" }),
   stopFlight: () => request("/flight/stop", { method: "POST" }),
 };

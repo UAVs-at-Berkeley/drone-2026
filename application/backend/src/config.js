@@ -6,7 +6,11 @@ import dotenv from "dotenv";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(__dirname, "..", ".env") });
 
-const DEFAULT_MISSION_DIR = "/ros_workspace/src/uav_mission/missions";
+/** Defaults match application/backend/.env.example (Pi layout under /home/pi/drone_workspace/drone-2026). */
+const DEFAULT_START_SCRIPT_PATH = "/home/pi/drone_workspace/drone-2026/start_drone.sh";
+const DEFAULT_RECORDING_SCRIPT_PATH = "/home/pi/drone_workspace/drone-2026/start_recording.sh";
+const DEFAULT_MISSION_DIR =
+  "/home/pi/drone_workspace/drone-2026/ros_workspace/src/uav_mission/missions";
 
 export const config = {
   port: Number(process.env.PORT || 8787),
@@ -18,7 +22,8 @@ export const config = {
   privateKeyPassphrase: process.env.DRONE_PRIVATE_KEY_PASSPHRASE || "",
   /** Plain-text SSH password (stored in .env). Prefer key-based auth when possible. */
   sshPassword: process.env.DRONE_SSH_PASSWORD || "",
-  startScriptPath: process.env.DRONE_START_SCRIPT_PATH || "~/start_drone.sh",
+  startScriptPath: process.env.DRONE_START_SCRIPT_PATH || DEFAULT_START_SCRIPT_PATH,
+  recordingScriptPath: process.env.DRONE_RECORDING_SCRIPT_PATH || DEFAULT_RECORDING_SCRIPT_PATH,
   missionDir: process.env.DRONE_MISSION_DIR || DEFAULT_MISSION_DIR,
   tmuxSession: process.env.DRONE_TMUX_SESSION || "drone_control",
   reconnectBackoffMs: Number(process.env.RECONNECT_BACKOFF_MS || 3000),
