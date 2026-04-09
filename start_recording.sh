@@ -27,7 +27,67 @@ BAG_STEM="${BAG_STEM:-flight_$(date +%Y%m%d_%H%M%S)}"
 BAG_STORAGE="${BAG_STORAGE:-sqlite3}"
 BAG_START_CHECK_DELAY="${BAG_START_CHECK_DELAY:-4}"
 
+# With job control on, each `cmd &` leader PID equals its process group ID. SIGINT to the
+# whole group matches what an interactive Ctrl+C does and helps rosbag2 finalize metadata.yaml.
+signal_int_process_group() {
+  local pid=$1
+  [[ -n "$pid" ]] && [[ "$pid" =~ ^[1-9][0-9]*$ ]] || return 0
+  kill -0 "$pid" 2>/dev/null || return 0
+  if ! kill -INT -- "-$pid" 2>/dev/null; then
+    kill -INT "$pid" 2>/dev/null || true
+  fi
+}
+
+warn_if_bag_incomplete() {
+  [[ -n "${BAG_STEM:-}" && -n "${BAG_DIR:-}" ]] || return 0
+  local d="$BAG_DIR/$BAG_STEM"
+  [[ -d "$d" ]] || return 0
+  [[ -f "$d/metadata.yaml" ]] && return 0
+  echo "start_recording.sh: WARNING — no metadata.yaml under $d after stop." >&2
+  if compgen -G "$d"/*.db3 &>/dev/null; then
+    echo "start_recording.sh: Found .db3 file(s); try: ros2 bag reindex \"$d\"" >&2
+  fi
+  if [[ -n "${BAG_RECORD_LOG:-}" && -f "$BAG_RECORD_LOG" ]]; then
+    echo "start_recording.sh: Last lines of recorder stderr ($BAG_RECORD_LOG):" >&2
+    tail -n 8 "$BAG_RECORD_LOG" 2>/dev/null >&2 || true
+  fi
+  ls -la "$d" 2>/dev/null >&2 || true
+}
+
+# prefix: log label (start_recording.sh | start_drone.sh)
+recording_stop_bag() {
+  local prefix=${1:-start_recording.sh}
+  if [[ -n "${BAG_PID:-}" ]] && kill -0 "$BAG_PID" 2>/dev/null; then
+    echo "$prefix: stopping bag (SIGINT to process group for clean finalize)..."
+    signal_int_process_group "$BAG_PID"
+    if ! wait "$BAG_PID" 2>/dev/null; then
+      echo "$prefix: warn: wait $BAG_PID (bag) did not reap a child — PID may not be the job leader" >&2
+    fi
+  fi
+}
+
+recording_stop_mavros() {
+  local prefix=${1:-start_recording.sh}
+  if [[ -n "${MAVROS_PID:-}" ]] && kill -0 "$MAVROS_PID" 2>/dev/null; then
+    echo "$prefix: stopping mavros launch..."
+    signal_int_process_group "$MAVROS_PID"
+    if ! wait "$MAVROS_PID" 2>/dev/null; then
+      echo "$prefix: warn: wait $MAVROS_PID (mavros) did not reap a child" >&2
+    fi
+  fi
+}
+
+recording_cleanup_stop_stack() {
+  local prefix=${1:-start_recording.sh}
+  recording_stop_bag "$prefix"
+  recording_stop_mavros "$prefix"
+  warn_if_bag_incomplete
+}
+
 drone_recording_steps() {
+  # Separate process groups per background job so kill -INT -$pid reaches launch/record subtrees.
+  set -m
+
   # --- 1) eth0 on gimbal subnet
   if ! ip link show "$ETH_GIMBAL_IF" &>/dev/null; then
     echo "start_recording.sh: interface $ETH_GIMBAL_IF not found; skip gimbal subnet setup" >&2
@@ -69,16 +129,7 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
   cleanup() {
     [[ $_CLEANUP_RAN -eq 1 ]] && return
     _CLEANUP_RAN=1
-    if [[ -n "${BAG_PID:-}" ]] && kill -0 "$BAG_PID" 2>/dev/null; then
-      echo "start_recording.sh: stopping bag (SIGINT for clean finalize)..."
-      kill -INT "$BAG_PID" 2>/dev/null || true
-      wait "$BAG_PID" 2>/dev/null || true
-    fi
-    if [[ -n "${MAVROS_PID:-}" ]] && kill -0 "$MAVROS_PID" 2>/dev/null; then
-      echo "start_recording.sh: stopping mavros launch..."
-      kill -INT "$MAVROS_PID" 2>/dev/null || true
-      wait "$MAVROS_PID" 2>/dev/null || true
-    fi
+    recording_cleanup_stop_stack "start_recording.sh"
   }
   trap cleanup EXIT
   trap 'cleanup; exit 130' INT

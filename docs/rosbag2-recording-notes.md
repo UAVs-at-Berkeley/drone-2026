@@ -22,6 +22,15 @@ If you only see an **empty `.mcap` (0 bytes)** and **no `metadata.yaml`**, the r
 2. **Stopped too soon** — wait until the “bag PID” line appears and a few seconds pass before testing.
 3. **Hard kill** — `tmux kill-session` or `kill -9` can prevent rosbag2 from writing **`metadata.yaml`**.
 4. **Wrong PID** — prefer **End mission** (sends Ctrl+C to the pane) so the shell’s cleanup trap can SIGINT the recorder.
+5. **Signal only hit the parent CLI, not the recorder subtree** — `start_recording.sh` enables bash job control (`set -m`) and sends **SIGINT to the whole process group** (`kill -INT -- -$BAG_PID`) so shutdown matches an interactive Ctrl+C. If you still see a warning about missing **`metadata.yaml`**, check the printed **`…_record_stderr.log`** tail.
+
+## No flight computer / no serial
+
+Mavros will error on `/dev/ttyACM0`, but the node still runs and ROS publishes **`/rosout`**, parameter events, etc. **`ros2 bag record -a`** should still create a small valid bag with **`metadata.yaml`** after a **clean** stop. If **`metadata.yaml`** is missing but you see **`.db3`** files, try:
+
+```bash
+ros2 bag reindex /home/pi/drone_workspace/bags/flight_YYYYMMDD_HHMMSS
+```
 
 ## Replay
 

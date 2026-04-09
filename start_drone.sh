@@ -26,16 +26,7 @@ _CLEANUP_RAN=0
 cleanup() {
   [[ $_CLEANUP_RAN -eq 1 ]] && return
   _CLEANUP_RAN=1
-  if [[ -n "${BAG_PID:-}" ]] && kill -0 "$BAG_PID" 2>/dev/null; then
-    echo "start_drone.sh: stopping bag (SIGINT for clean finalize)..."
-    kill -INT "$BAG_PID" 2>/dev/null || true
-    wait "$BAG_PID" 2>/dev/null || true
-  fi
-  if [[ -n "${MAVROS_PID:-}" ]] && kill -0 "$MAVROS_PID" 2>/dev/null; then
-    echo "start_drone.sh: stopping mavros launch..."
-    kill -INT "$MAVROS_PID" 2>/dev/null || true
-    wait "$MAVROS_PID" 2>/dev/null || true
-  fi
+  recording_cleanup_stop_stack "start_drone.sh"
 }
 trap cleanup EXIT
 trap 'cleanup; exit 130' INT
