@@ -10,6 +10,7 @@ Local web app for controlling the drone without manually SSHing and running scri
 - **Takeoff**: full stack (`start_drone.sh <mission>`) in remote tmux.
 - **Passive record**: recording stack only (`start_recording.sh`) in the same tmux session.
 - **End mission**: Ctrl+C equivalent via tmux — stops whichever mode is running (passive or full).
+- **Tmux log panel**: while connected, polls `tmux capture-pane` for read-only ROS / script output from the drone session.
 - Reconnect-aware polling/status updates after link loss.
 
 ## Project Structure
@@ -54,6 +55,7 @@ Default URLs:
 - `POST /flight/start` — full takeoff (`start_drone.sh`, requires `remoteMissionPath`)
 - `POST /flight/start-passive` — passive recording only (`start_recording.sh`)
 - `POST /flight/stop` — end mission or passive recording (same tmux session)
+- `GET /drone/tmux-log` — JSON `{ text, hasSession }`; snapshot of tmux pane scrollback (requires SSH connected). Size controlled by `DRONE_TMUX_CAPTURE_LINES` in backend `.env`.
 
 ## Hardware Validation Checklist
 

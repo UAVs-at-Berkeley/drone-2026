@@ -86,3 +86,7 @@ nc -zv 192.168.144.108 554
 ```
 
 If ping fails, fix eth0 IP and routing first; then retry the camera node or `check_gimbal_stream.py`.
+
+## 5. Passwordless sudo for flight scripts (tmux / web app)
+
+`start_recording.sh` can configure eth0 at runtime with `sudo ip …`. For **non-interactive** sessions, install the small helper and sudoers drop-in described in [passwordless-sudo-gimbal-net.md](passwordless-sudo-gimbal-net.md).

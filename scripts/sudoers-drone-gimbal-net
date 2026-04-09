@@ -1,0 +1,16 @@
+# Passwordless sudo ONLY for gimbal Ethernet setup (used by start_recording.sh / start_drone.sh).
+#
+# 1) Install the helper (paths must match this file):
+#      sudo install -m 755 /path/to/drone-2026/scripts/drone-gimbal-net-setup.sh /usr/local/sbin/drone-gimbal-net-setup.sh
+#
+# 2) Install this file:
+#      sudo cp /path/to/drone-2026/scripts/sudoers-drone-gimbal-net /etc/sudoers.d/drone-gimbal-net
+#      sudo chmod 440 /etc/sudoers.d/drone-gimbal-net
+#      sudo chown root:root /etc/sudoers.d/drone-gimbal-net
+#
+# 3) Validate syntax:
+#      sudo visudo -cf /etc/sudoers.d/drone-gimbal-net
+#
+# 4) Replace `pi` below with the drone login user if it is not `pi`.
+
+pi ALL=(root) NOPASSWD: /usr/local/sbin/drone-gimbal-net-setup.sh

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "./api";
 
 const defaultMission = `mission:
@@ -26,6 +26,16 @@ export default function App() {
   const [info, setInfo] = useState("");
   const [busy, setBusy] = useState(false);
   const [sshPassword, setSshPassword] = useState("");
+  const [tmuxLog, setTmuxLog] = useState("");
+  const [tmuxLogPaused, setTmuxLogPaused] = useState(false);
+  const [tmuxLogNote, setTmuxLogNote] = useState("");
+  const [followLog, setFollowLog] = useState(true);
+  const followLogRef = useRef(true);
+  const tmuxPreRef = useRef(null);
+
+  useEffect(() => {
+    followLogRef.current = followLog;
+  }, [followLog]);
 
   useEffect(() => {
     api
@@ -160,6 +170,46 @@ export default function App() {
     return () => clearInterval(interval);
   }, [status.connectionState, status.inFlight, sshPassword]);
 
+  useEffect(() => {
+    if (!status.sshConnected || tmuxLogPaused) {
+      return undefined;
+    }
+    let cancelled = false;
+    async function pull() {
+      try {
+        const data = await api.tmuxLog();
+        if (cancelled) return;
+        setTmuxLog(data.text || "");
+        setTmuxLogNote(
+          data.hasSession ? "" : "No tmux session yet — start Takeoff or Passive Record to see output."
+        );
+        if (followLogRef.current && tmuxPreRef.current) {
+          const el = tmuxPreRef.current;
+          el.scrollTop = el.scrollHeight;
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setTmuxLogNote(e.message || "Could not read tmux log.");
+        }
+      }
+    }
+    pull();
+    const id = setInterval(pull, 1500);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [status.sshConnected, tmuxLogPaused]);
+
+  useEffect(() => {
+    if (!status.sshConnected) {
+      setTmuxLog("");
+      setTmuxLogNote("");
+      setFollowLog(true);
+      followLogRef.current = true;
+    }
+  }, [status.sshConnected]);
+
   return (
     <main className="page">
       <h1>Drone Control</h1>
@@ -214,6 +264,53 @@ export default function App() {
           End mission
         </button>
       </section>
+
+      {status.sshConnected && (
+        <section className="panel">
+          <h2>Drone tmux output (read-only)</h2>
+          <p className="tmux-log-hint">
+            Live snapshot of tmux session <code>{status.droneTmuxSession || "drone_control"}</code> — ROS and script
+            logs while connected. Pause to scroll without jumping.
+          </p>
+          <div className="tmux-log-toolbar">
+            <label>
+              <input
+                type="checkbox"
+                checked={tmuxLogPaused}
+                onChange={(e) => setTmuxLogPaused(e.target.checked)}
+              />{" "}
+              Pause updates
+            </label>
+            <label>
+              <input
+                type="checkbox"
+                checked={followLog}
+                onChange={(e) => {
+                  const on = e.target.checked;
+                  setFollowLog(on);
+                  if (on && tmuxPreRef.current) {
+                    tmuxPreRef.current.scrollTop = tmuxPreRef.current.scrollHeight;
+                  }
+                }}
+              />{" "}
+              Auto-scroll to bottom
+            </label>
+          </div>
+          <pre
+            ref={tmuxPreRef}
+            className="tmux-log"
+            onScroll={() => {
+              const el = tmuxPreRef.current;
+              if (!el) return;
+              const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+              setFollowLog(nearBottom);
+            }}
+          >
+            {tmuxLog || "—"}
+          </pre>
+          {tmuxLogNote ? <p className="tmux-log-footnote">{tmuxLogNote}</p> : null}
+        </section>
+      )}
 
       {(info || status.lastError) && (
         <section className="panel">

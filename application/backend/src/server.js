@@ -30,6 +30,20 @@ app.get("/drone/status", async (_req, res) => {
   }
 });
 
+app.get("/drone/tmux-log", async (_req, res) => {
+  try {
+    if (!manager.getState().sshConnected) {
+      res.status(503).json({ error: "Not connected to drone.", text: "", hasSession: false });
+      return;
+    }
+    await manager.connect();
+    const payload = await manager.captureTmuxPane();
+    res.json(payload);
+  } catch (error) {
+    res.status(500).json({ error: error.message, text: "", hasSession: false });
+  }
+});
+
 app.post("/drone/connect", async (req, res) => {
   try {
     const raw = req.body?.password;

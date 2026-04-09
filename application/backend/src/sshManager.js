@@ -27,7 +27,7 @@ export class DroneSessionManager {
   }
 
   getState() {
-    return { ...this.state };
+    return { ...this.state, droneTmuxSession: config.tmuxSession };
   }
 
   setState(patch) {
@@ -219,6 +219,23 @@ export class DroneSessionManager {
         });
       });
     });
+  }
+
+  /**
+   * Read-only snapshot of the drone tmux session pane (ROS / script output).
+   */
+  async captureTmuxPane() {
+    if (!this.client) {
+      throw new Error("Not connected.");
+    }
+    const sessionName = config.tmuxSession;
+    const lines = config.tmuxCaptureLines;
+    const check = await this.exec(`tmux has-session -t ${sessionName} 2>/dev/null; echo $?`);
+    if (!check.stdout.trim().endsWith("0")) {
+      return { text: "", hasSession: false };
+    }
+    const result = await this.exec(`tmux capture-pane -t ${sessionName}:0 -p -S -${lines}`);
+    return { text: result.stdout, hasSession: true };
   }
 
   async refreshFlightState() {

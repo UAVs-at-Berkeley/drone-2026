@@ -16,6 +16,7 @@ export const api = {
   health: () => request("/health"),
   prefill: () => request("/drone/prefill"),
   status: () => request("/drone/status"),
+  tmuxLog: () => request("/drone/tmux-log"),
   connect: (password = "") =>
     request("/drone/connect", {
       method: "POST",

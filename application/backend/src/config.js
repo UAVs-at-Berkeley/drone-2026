@@ -26,6 +26,8 @@ export const config = {
   recordingScriptPath: process.env.DRONE_RECORDING_SCRIPT_PATH || DEFAULT_RECORDING_SCRIPT_PATH,
   missionDir: process.env.DRONE_MISSION_DIR || DEFAULT_MISSION_DIR,
   tmuxSession: process.env.DRONE_TMUX_SESSION || "drone_control",
+  /** Lines of tmux scrollback to return for the log panel (negative -S value). */
+  tmuxCaptureLines: Math.max(100, Number(process.env.DRONE_TMUX_CAPTURE_LINES || 2500)),
   reconnectBackoffMs: Number(process.env.RECONNECT_BACKOFF_MS || 3000),
 };
 

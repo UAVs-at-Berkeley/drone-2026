@@ -26,8 +26,14 @@ drone_recording_steps() {
   if ! ip link show "$ETH_GIMBAL_IF" &>/dev/null; then
     echo "start_recording.sh: interface $ETH_GIMBAL_IF not found; skip gimbal subnet setup" >&2
   else
-    sudo ip link set "$ETH_GIMBAL_IF" up
-    sudo ip addr replace "$ETH_GIMBAL_IP" dev "$ETH_GIMBAL_IF"
+    # Prefer installed helper + /etc/sudoers.d (NOPASSWD); avoids password prompts in tmux/SSH automation.
+    DRONE_NET_SETUP_SCRIPT="${DRONE_NET_SETUP_SCRIPT:-/usr/local/sbin/drone-gimbal-net-setup.sh}"
+    if [[ -x "$DRONE_NET_SETUP_SCRIPT" ]]; then
+      sudo "$DRONE_NET_SETUP_SCRIPT" "$ETH_GIMBAL_IF" "$ETH_GIMBAL_IP"
+    else
+      sudo ip link set "$ETH_GIMBAL_IF" up
+      sudo ip addr replace "$ETH_GIMBAL_IP" dev "$ETH_GIMBAL_IF"
+    fi
   fi
 
   # --- 2) mavros (background)

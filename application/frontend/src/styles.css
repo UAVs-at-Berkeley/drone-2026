@@ -60,3 +60,39 @@ button:disabled {
   cursor: not-allowed;
   background: #475569;
 }
+
+.tmux-log-hint,
+.tmux-log-footnote {
+  font-size: 0.9rem;
+  color: #94a3b8;
+  margin-top: 0;
+}
+
+.tmux-log-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 8px;
+  align-items: center;
+}
+
+.tmux-log-toolbar label {
+  cursor: pointer;
+  user-select: none;
+}
+
+.tmux-log {
+  margin: 0;
+  max-height: 320px;
+  overflow: auto;
+  padding: 12px;
+  font-family: ui-monospace, "Cascadia Mono", "Segoe UI Mono", Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: #0b1220;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  color: #cbd5e1;
+}
