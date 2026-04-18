@@ -1,0 +1,6 @@
+mission:
+  steps:
+    - id: payload_drop
+      target_latitude_deg: 37.4346    # replace with your actual target GPS coordinates
+      target_longitude_deg: -122.012655
+      cruise_altitude_m: 30.0           # meters above home to fly to target
