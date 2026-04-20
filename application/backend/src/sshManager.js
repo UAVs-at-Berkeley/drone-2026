@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import { Client } from "ssh2";
 import SftpClient from "ssh2-sftp-client";
-import { config, expandHomePath } from "./config.js";
+import { expandHomePath, getModeConfig, normalizeMode } from "./config.js";
 
 const defaultState = {
   connectionState: "disconnected",
@@ -9,6 +9,11 @@ const defaultState = {
   inFlight: false,
   /** null | "full" (start_drone) | "passive" (start_recording only) */
   runMode: null,
+  mode: "physical",
+  simViewerUrl: "",
+  connectTrace: [],
+  composePs: "",
+  composeLogsTail: "",
   tmuxSessionExists: false,
   lastError: "",
   lastConnectedAt: null,
@@ -20,6 +25,7 @@ export class DroneSessionManager {
     this.state = { ...defaultState };
     this.client = null;
     this.sftp = null;
+    this.mode = "physical";
     /** Remote user's $HOME from the drone (used to expand ~/ in SFTP paths). */
     this.remoteHome = "";
     /** Last SSH password used successfully (UI or .env), for reconnect without resending from client. */
@@ -27,17 +33,47 @@ export class DroneSessionManager {
   }
 
   getState() {
-    return { ...this.state, droneTmuxSession: config.tmuxSession };
+    const modeCfg = this.getModeConfig();
+    return {
+      ...this.state,
+      mode: this.mode,
+      simViewerUrl: this.mode === "sim" ? modeCfg.novncOrigin || "" : "",
+      droneTmuxSession: modeCfg.tmuxSession,
+    };
   }
 
   setState(patch) {
     this.state = { ...this.state, ...patch };
   }
 
+  getModeConfig() {
+    return getModeConfig(this.mode);
+  }
+
+  async setMode(nextMode) {
+    const normalized = normalizeMode(nextMode);
+    if (normalized === this.mode) {
+      return;
+    }
+    if (this.client || this.sftp) {
+      await this.disconnect();
+    }
+    this.mode = normalized;
+    this.setState({
+      mode: normalized,
+      simViewerUrl: normalized === "sim" ? this.getModeConfig().novncOrigin || "" : "",
+      runMode: null,
+      inFlight: false,
+      tmuxSessionExists: false,
+      connectionState: "disconnected",
+    });
+  }
+
   /**
    * Non-empty password from the current connect request, else saved session, else .env.
    */
   resolveEffectivePassword(options = {}) {
+    const modeCfg = this.getModeConfig();
     const fromRequest = options.password;
     if (typeof fromRequest === "string" && fromRequest.length > 0) {
       return fromRequest;
@@ -45,29 +81,29 @@ export class DroneSessionManager {
     if (this.sessionPassword) {
       return this.sessionPassword;
     }
-    return config.sshPassword || "";
+    return modeCfg.sshPassword || "";
   }
 
-  canAttemptConnect(effectivePassword) {
-    if (!config.droneHost || !config.droneUser) {
+  canAttemptConnect(modeCfg, effectivePassword) {
+    if (!modeCfg.host || !modeCfg.user) {
       return false;
     }
-    const hasKey = Boolean(config.privateKeyPath);
+    const hasKey = Boolean(modeCfg.privateKeyPath);
     const hasPwd = Boolean(effectivePassword && effectivePassword.length > 0);
     return hasKey || hasPwd;
   }
 
-  buildConnectOptions(effectivePassword) {
+  buildConnectOptions(modeCfg, effectivePassword) {
     const connectOpts = {
-      host: config.droneHost,
-      port: config.dronePort,
-      username: config.droneUser,
+      host: modeCfg.host,
+      port: modeCfg.port,
+      username: modeCfg.user,
       readyTimeout: 8000,
     };
-    if (config.privateKeyPath) {
-      connectOpts.privateKey = fs.readFileSync(expandHomePath(config.privateKeyPath), "utf8");
-      if (config.privateKeyPassphrase) {
-        connectOpts.passphrase = config.privateKeyPassphrase;
+    if (modeCfg.privateKeyPath) {
+      connectOpts.privateKey = fs.readFileSync(expandHomePath(modeCfg.privateKeyPath), "utf8");
+      if (modeCfg.privateKeyPassphrase) {
+        connectOpts.passphrase = modeCfg.privateKeyPassphrase;
       }
     }
     if (effectivePassword) {
@@ -77,12 +113,18 @@ export class DroneSessionManager {
   }
 
   async connect(options = {}) {
+    if (options.mode !== undefined && options.mode !== null) {
+      await this.setMode(options.mode);
+    }
+    const modeCfg = this.getModeConfig();
     const effectivePwd = this.resolveEffectivePassword(options);
-    if (!this.canAttemptConnect(effectivePwd)) {
+    if (!this.canAttemptConnect(modeCfg, effectivePwd)) {
       this.setState({
         connectionState: "disconnected",
         lastError:
-          "Missing DRONE_HOST or DRONE_USER, or no auth: set DRONE_PRIVATE_KEY_PATH and/or enter an SSH password (or DRONE_SSH_PASSWORD in .env).",
+          this.mode === "sim"
+            ? "Simulation SSH is not configured: set SIM_SSH_HOST, SIM_SSH_USER, and auth (SIM_PRIVATE_KEY_PATH and/or SIM_SSH_PASSWORD)."
+            : "Missing DRONE_HOST or DRONE_USER, or no auth: set DRONE_PRIVATE_KEY_PATH and/or enter an SSH password (or DRONE_SSH_PASSWORD in .env).",
       });
       return this.getState();
     }
@@ -92,7 +134,7 @@ export class DroneSessionManager {
     }
 
     this.setState({ connectionState: "connecting", lastError: "" });
-    const connectOpts = this.buildConnectOptions(effectivePwd);
+    const connectOpts = this.buildConnectOptions(modeCfg, effectivePwd);
     const client = new Client();
 
     try {
@@ -228,8 +270,9 @@ export class DroneSessionManager {
     if (!this.client) {
       throw new Error("Not connected.");
     }
-    const sessionName = config.tmuxSession;
-    const lines = config.tmuxCaptureLines;
+    const modeCfg = this.getModeConfig();
+    const sessionName = modeCfg.tmuxSession;
+    const lines = modeCfg.tmuxCaptureLines;
     const check = await this.exec(`tmux has-session -t ${sessionName} 2>/dev/null; echo $?`);
     if (!check.stdout.trim().endsWith("0")) {
       return { text: "", hasSession: false };
@@ -242,7 +285,8 @@ export class DroneSessionManager {
     if (!this.client) {
       return this.getState();
     }
-    const sessionName = config.tmuxSession;
+    const modeCfg = this.getModeConfig();
+    const sessionName = modeCfg.tmuxSession;
     const result = await this.exec(`tmux has-session -t ${sessionName} 2>/dev/null; echo $?`);
     const exists = result.stdout.trim().endsWith("0");
     const now = new Date().toISOString();
@@ -260,7 +304,8 @@ export class DroneSessionManager {
     if (!this.sftp) {
       throw new Error("SFTP is not connected.");
     }
-    const missionDir = this.resolveRemotePath(config.missionDir);
+    const modeCfg = this.getModeConfig();
+    const missionDir = this.resolveRemotePath(modeCfg.missionDir);
     await this.sftp.mkdir(missionDir, true);
   }
 
@@ -269,16 +314,33 @@ export class DroneSessionManager {
       throw new Error("SFTP is not connected.");
     }
     await this.ensureRemoteMissionDir();
-    const missionDir = this.resolveRemotePath(config.missionDir);
+    const modeCfg = this.getModeConfig();
+    const missionDir = this.resolveRemotePath(modeCfg.missionDir);
     const remotePath = `${missionDir.replace(/\/+$/, "")}/${filename}`;
     await this.sftp.put(Buffer.from(yamlContent, "utf8"), remotePath);
     return remotePath;
   }
 
+  buildInlineEnv(modeCfg, { includeMissionArgs = false } = {}) {
+    const quote = (value) => `"${String(value).replace(/(["\\$`])/g, "\\$1")}"`;
+    const vars = [];
+    if (modeCfg.mavrosFcuUrl) {
+      vars.push(`MAVROS_FCU_URL=${quote(modeCfg.mavrosFcuUrl)}`);
+    }
+    if (includeMissionArgs && modeCfg.missionExtraArgs) {
+      vars.push(`DRONE_MISSION_EXTRA_ARGS=${quote(modeCfg.missionExtraArgs)}`);
+    }
+    return vars.length > 0 ? `${vars.join(" ")} ` : "";
+  }
+
   async startFlight(remoteMissionPath) {
-    const sessionName = config.tmuxSession;
+    const modeCfg = this.getModeConfig();
+    const sessionName = modeCfg.tmuxSession;
     const escapedMission = remoteMissionPath.replace(/"/g, '\\"');
-    const startCommand = `${config.startScriptPath} "${escapedMission}"`;
+    const startCommand = `${this.buildInlineEnv(modeCfg, { includeMissionArgs: true })}${modeCfg.startScriptPath} "${escapedMission}"`.replace(
+      /'/g,
+      "'\\''"
+    );
     await this.exec(`tmux kill-session -t ${sessionName} 2>/dev/null || true`);
     await this.exec(`tmux new-session -d -s ${sessionName} '${startCommand}'`);
     this.setState({
@@ -291,8 +353,9 @@ export class DroneSessionManager {
   }
 
   async startPassiveRecording() {
-    const sessionName = config.tmuxSession;
-    const startCommand = config.recordingScriptPath.replace(/'/g, "'\\''");
+    const modeCfg = this.getModeConfig();
+    const sessionName = modeCfg.tmuxSession;
+    const startCommand = `${this.buildInlineEnv(modeCfg)}${modeCfg.recordingScriptPath}`.replace(/'/g, "'\\''");
     await this.exec(`tmux kill-session -t ${sessionName} 2>/dev/null || true`);
     await this.exec(`tmux new-session -d -s ${sessionName} '${startCommand}'`);
     this.setState({
@@ -306,9 +369,10 @@ export class DroneSessionManager {
 
   /** Ends whatever is running in the tmux session (full mission stack or passive recording). */
   async stopFlight() {
-    const sessionName = config.tmuxSession;
+    const modeCfg = this.getModeConfig();
+    const sessionName = modeCfg.tmuxSession;
     this.setState({ connectionState: "flight_stopping" });
-    const grace = config.tmuxStopGraceSeconds;
+    const grace = modeCfg.tmuxStopGraceSeconds;
     await this.exec(`tmux send-keys -t ${sessionName} C-c`);
     await this.exec(
       `sleep ${grace}; tmux has-session -t ${sessionName} 2>/dev/null && tmux kill-session -t ${sessionName} || true`

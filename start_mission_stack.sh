@@ -15,4 +15,11 @@ LAUNCH_ARGS=()
 if [[ -n "${1:-}" ]]; then
   LAUNCH_ARGS+=(mission_file:="$1")
 fi
+
+if [[ -n "${DRONE_MISSION_EXTRA_ARGS:-}" ]]; then
+  # shellcheck disable=SC2206
+  EXTRA_ARGS=( ${DRONE_MISSION_EXTRA_ARGS} )
+  LAUNCH_ARGS+=("${EXTRA_ARGS[@]}")
+fi
+
 ros2 launch uav_mission cuasc.launch.py "${LAUNCH_ARGS[@]}"

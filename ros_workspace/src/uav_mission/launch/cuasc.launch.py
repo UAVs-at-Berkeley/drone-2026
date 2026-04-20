@@ -8,6 +8,7 @@ Usage (from ros_workspace):
 
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
+from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
@@ -29,6 +30,7 @@ def generate_launch_description():
         DeclareLaunchArgument("gimbal_ip", default_value="192.168.144.108", description="Gimbal/camera GCU IP"),
         DeclareLaunchArgument("gimbal_port", default_value="2337", description="Gimbal UDP control port"),
         DeclareLaunchArgument("publish_image_hz", default_value="30.0", description="Image publish rate (Hz)"),
+        DeclareLaunchArgument("include_camera", default_value="true", description="Launch hardware camera node"),
         Node(
             package="uav_mission",
             executable="offboard_takeoff_server",
@@ -80,6 +82,7 @@ def generate_launch_description():
             executable="camera_node",
             name="camera_node",
             output="screen",
+            condition=IfCondition(LaunchConfiguration("include_camera")),
             parameters=[
                 {"use_sim_time": LaunchConfiguration("use_sim_time")},
                 {"gimbal_ip": LaunchConfiguration("gimbal_ip", default="192.168.144.108")},

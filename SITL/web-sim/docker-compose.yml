@@ -1,0 +1,16 @@
+services:
+  sim:
+    container_name: drone-2026-sim
+    build:
+      context: ../..
+      dockerfile: SITL/web-sim/Dockerfile
+    environment:
+      SIM_SSH_PASSWORD: sim
+      SITL_MAKE_TARGET: gz_x500
+    ports:
+      - "22220:2222"
+      - "5900:5900"
+      - "6080:6080"
+      - "14540:14540/udp"
+      - "14550:14550/udp"
+    restart: unless-stopped

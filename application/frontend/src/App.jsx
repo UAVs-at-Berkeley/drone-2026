@@ -18,6 +18,8 @@ export default function App() {
     sshConnected: false,
     inFlight: false,
     runMode: null,
+    mode: "physical",
+    simViewerUrl: "",
     lastError: "",
   });
   const [missionName, setMissionName] = useState("mission_ui.yaml");
@@ -25,7 +27,9 @@ export default function App() {
   const [savedMissionPath, setSavedMissionPath] = useState("");
   const [info, setInfo] = useState("");
   const [busy, setBusy] = useState(false);
+  const [connectionMode, setConnectionMode] = useState("physical");
   const [sshPassword, setSshPassword] = useState("");
+  const [prefillPasswords, setPrefillPasswords] = useState({ physical: "", sim: "" });
   const [tmuxLog, setTmuxLog] = useState("");
   const [tmuxLogPaused, setTmuxLogPaused] = useState(false);
   const [tmuxLogNote, setTmuxLogNote] = useState("");
@@ -38,6 +42,7 @@ export default function App() {
   const [envPanelBusy, setEnvPanelBusy] = useState(false);
   const [envPanelError, setEnvPanelError] = useState("");
   const [envSaveBusy, setEnvSaveBusy] = useState(false);
+  const [simShutdownBusy, setSimShutdownBusy] = useState(false);
 
   useEffect(() => {
     followLogRef.current = followLog;
@@ -47,15 +52,26 @@ export default function App() {
     api
       .prefill()
       .then((data) => {
-        setSshPassword(typeof data?.sshPassword === "string" ? data.sshPassword : "");
+        const physical = typeof data?.physicalSshPassword === "string" ? data.physicalSshPassword : "";
+        const sim = typeof data?.simSshPassword === "string" ? data.simSshPassword : "";
+        setPrefillPasswords({ physical, sim });
+        setSshPassword(physical);
       })
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (status.sshConnected) {
+      return;
+    }
+    setSshPassword(prefillPasswords[connectionMode] ?? "");
+  }, [connectionMode, prefillPasswords, status.sshConnected]);
 
   const canSave = status.sshConnected && !busy;
   const canTakeoff = status.sshConnected && !status.inFlight && !busy && Boolean(savedMissionPath);
   const canPassiveRecord = status.sshConnected && !status.inFlight && !busy;
   const canEndMission = status.sshConnected && status.inFlight && !busy;
+  const simModeActive = (status.mode || connectionMode) === "sim";
 
   const statusLabel = useMemo(() => {
     if (status.connectionState === "connected_idle") return "Connected";
@@ -92,17 +108,40 @@ export default function App() {
     setBusy(true);
     setInfo("");
     try {
-      const next = await api.connect(sshPassword);
+      const next = await api.connect({ mode: connectionMode, password: sshPassword });
       setStatus(next);
       if (next.sshConnected) {
-        setInfo("Connected to drone.");
+        setInfo(connectionMode === "sim" ? "Connected to local simulation." : "Connected to drone.");
       } else {
         setInfo(next.lastError || "Could not connect. Check backend .env and logs.");
       }
     } catch (error) {
+      if (error?.details?.state) {
+        setStatus(error.details.state);
+      }
       setInfo(error.message);
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function shutdownSimulation() {
+    setSimShutdownBusy(true);
+    setInfo("");
+    try {
+      const result = await api.shutdownSimulation();
+      if (result?.state) {
+        setStatus(result.state);
+      }
+      setInfo("Simulation docker compose shutdown requested.");
+      await refreshStatus();
+    } catch (error) {
+      if (error?.details?.state) {
+        setStatus(error.details.state);
+      }
+      setInfo(error.message);
+    } finally {
+      setSimShutdownBusy(false);
     }
   }
 
@@ -186,7 +225,12 @@ export default function App() {
       setInfo(result.message || "Saved backend .env.");
       await loadEnvPanel();
       const pre = await api.prefill();
-      setSshPassword(typeof pre?.sshPassword === "string" ? pre.sshPassword : "");
+      const physical = typeof pre?.physicalSshPassword === "string" ? pre.physicalSshPassword : "";
+      const sim = typeof pre?.simSshPassword === "string" ? pre.simSshPassword : "";
+      setPrefillPasswords({ physical, sim });
+      if (!status.sshConnected) {
+        setSshPassword((connectionMode === "sim" ? sim : physical) || "");
+      }
     } catch (error) {
       setInfo(error.message);
     } finally {
@@ -213,11 +257,11 @@ export default function App() {
     const interval = setInterval(() => {
       refreshStatus();
       if (reconnectStates.has(status.connectionState) && status.inFlight) {
-        api.connect(sshPassword).catch(() => {});
+        api.connect({ mode: status.mode || connectionMode, password: sshPassword }).catch(() => {});
       }
     }, 3000);
     return () => clearInterval(interval);
-  }, [status.connectionState, status.inFlight, sshPassword]);
+  }, [status.connectionState, status.inFlight, status.mode, connectionMode, sshPassword]);
 
   useEffect(() => {
     if (!status.sshConnected || tmuxLogPaused) {
@@ -308,6 +352,17 @@ export default function App() {
           <strong>Activity:</strong> {activityLabel}
         </p>
         <label>
+          Control mode
+          <select
+            value={connectionMode}
+            onChange={(e) => setConnectionMode(e.target.value)}
+            disabled={busy || status.sshConnected}
+          >
+            <option value="physical">Physical drone</option>
+            <option value="sim">Local simulation (Docker SITL)</option>
+          </select>
+        </label>
+        <label>
           SSH password (optional if using key-only or .env password)
           <input
             type="password"
@@ -315,13 +370,78 @@ export default function App() {
             value={sshPassword}
             onChange={(e) => setSshPassword(e.target.value)}
             disabled={busy || status.sshConnected}
-            placeholder="Leave empty to use key or DRONE_SSH_PASSWORD from .env"
+            placeholder={
+              connectionMode === "sim"
+                ? "Leave empty to use key or SIM_SSH_PASSWORD from .env"
+                : "Leave empty to use key or DRONE_SSH_PASSWORD from .env"
+            }
           />
         </label>
         <button onClick={connect} disabled={busy || status.sshConnected}>
-          {status.sshConnected ? "Connected" : "Connect to Drone"}
+          {status.sshConnected ? "Connected" : connectionMode === "sim" ? "Start + Connect Simulation" : "Connect to Drone"}
         </button>
+        {simModeActive ? (
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={shutdownSimulation}
+            disabled={simShutdownBusy || busy}
+          >
+            {simShutdownBusy ? "Shutting down simulation..." : "Shutdown Simulation Container"}
+          </button>
+        ) : null}
       </section>
+
+      {simModeActive && status.simViewerUrl ? (
+        <section className="panel">
+          <h2>Simulation view (Gazebo via noVNC)</h2>
+          <p className="tmux-log-hint">
+            Live simulator desktop stream from the Docker container.
+          </p>
+          <iframe
+            title="Simulation noVNC stream"
+            src={status.simViewerUrl}
+            className="sim-viewer"
+            allow="clipboard-read; clipboard-write"
+          />
+        </section>
+      ) : null}
+
+      {simModeActive ? (
+        <section className="panel">
+          <h2>Simulation connection diagnostics</h2>
+          <p className="tmux-log-hint">
+            Last connect attempt trace, compose status, and recent compose logs for debugging startup failures.
+          </p>
+          <p>
+            <strong>Backend mode:</strong> {status.mode || "unknown"}
+          </p>
+          <p>
+            <strong>Connection state:</strong> {status.connectionState || "unknown"}
+          </p>
+          <p>
+            <strong>Viewer URL:</strong> {status.simViewerUrl || "not set"}
+          </p>
+          {Array.isArray(status.connectTrace) && status.connectTrace.length > 0 ? (
+            <>
+              <h3>Connect trace</h3>
+              <pre className="tmux-log">{status.connectTrace.join("\n")}</pre>
+            </>
+          ) : null}
+          {status.composePs ? (
+            <>
+              <h3>docker compose ps --all</h3>
+              <pre className="tmux-log">{status.composePs}</pre>
+            </>
+          ) : null}
+          {status.composeLogsTail ? (
+            <>
+              <h3>docker compose logs --tail 120</h3>
+              <pre className="tmux-log">{status.composeLogsTail}</pre>
+            </>
+          ) : null}
+        </section>
+      ) : null}
 
       <section className="panel">
         <h2>Mission YAML</h2>

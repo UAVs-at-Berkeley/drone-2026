@@ -6,6 +6,10 @@ const DEFAULT_START_SCRIPT_PATH = "/home/pi/drone_workspace/drone-2026/start_dro
 const DEFAULT_RECORDING_SCRIPT_PATH = "/home/pi/drone_workspace/drone-2026/start_recording.sh";
 const DEFAULT_MISSION_DIR =
   "/home/pi/drone_workspace/drone-2026/ros_workspace/src/uav_mission/missions";
+const DEFAULT_SIM_START_SCRIPT_PATH = "/home/sim/drone_workspace/drone-2026/start_drone.sh";
+const DEFAULT_SIM_RECORDING_SCRIPT_PATH = "/home/sim/drone_workspace/drone-2026/start_recording.sh";
+const DEFAULT_SIM_MISSION_DIR =
+  "/home/sim/drone_workspace/drone-2026/ros_workspace/src/uav_mission/missions";
 
 /** String fallbacks when a key is missing from both .env and process.env. */
 export const DEFAULT_ENV_STRINGS = {
@@ -22,6 +26,26 @@ export const DEFAULT_ENV_STRINGS = {
   DRONE_TMUX_SESSION: "drone_control",
   DRONE_TMUX_CAPTURE_LINES: "2500",
   DRONE_TMUX_STOP_GRACE_SECONDS: "20",
+  DRONE_MAVROS_FCU_URL: "",
+  DRONE_MISSION_EXTRA_ARGS: "",
+  SIM_COMPOSE_FILE: "",
+  SIM_COMPOSE_PROJECT: "",
+  SIM_SSH_HOST: "127.0.0.1",
+  SIM_SSH_PORT: "22220",
+  SIM_SSH_USER: "sim",
+  SIM_PRIVATE_KEY_PATH: "",
+  SIM_PRIVATE_KEY_PASSPHRASE: "",
+  SIM_SSH_PASSWORD: "sim",
+  SIM_DRONE_START_SCRIPT_PATH: DEFAULT_SIM_START_SCRIPT_PATH,
+  SIM_DRONE_RECORDING_SCRIPT_PATH: DEFAULT_SIM_RECORDING_SCRIPT_PATH,
+  SIM_DRONE_MISSION_DIR: DEFAULT_SIM_MISSION_DIR,
+  SIM_DRONE_TMUX_SESSION: "drone_control",
+  SIM_DRONE_TMUX_CAPTURE_LINES: "2500",
+  SIM_DRONE_TMUX_STOP_GRACE_SECONDS: "20",
+  SIM_MAVROS_FCU_URL: "udp://:14540@",
+  SIM_DRONE_MISSION_EXTRA_ARGS: "use_sim_time:=true include_camera:=false",
+  SIM_NOVNC_ORIGIN: "http://127.0.0.1:6080/vnc.html?autoconnect=1&resize=remote&path=websockify",
+  SIM_AUTOSTOP_ON_DISCONNECT: "0",
   RECONNECT_BACKOFF_MS: "3000",
 };
 
@@ -39,6 +63,26 @@ export const MANAGED_ENV_FIELDS = [
   { key: "DRONE_TMUX_SESSION", label: "tmux session name", sensitive: false },
   { key: "DRONE_TMUX_CAPTURE_LINES", label: "tmux log lines to fetch", sensitive: false },
   { key: "DRONE_TMUX_STOP_GRACE_SECONDS", label: "Seconds after Ctrl+C before kill-session", sensitive: false },
+  { key: "DRONE_MAVROS_FCU_URL", label: "Physical MAVROS FCU URL override", sensitive: false },
+  { key: "DRONE_MISSION_EXTRA_ARGS", label: "Physical extra ros2 launch args", sensitive: false },
+  { key: "SIM_COMPOSE_FILE", label: "Simulation docker compose file path", sensitive: false },
+  { key: "SIM_COMPOSE_PROJECT", label: "Simulation docker compose project name", sensitive: false },
+  { key: "SIM_SSH_HOST", label: "Simulation SSH host", sensitive: false },
+  { key: "SIM_SSH_PORT", label: "Simulation SSH port", sensitive: false },
+  { key: "SIM_SSH_USER", label: "Simulation SSH user", sensitive: false },
+  { key: "SIM_PRIVATE_KEY_PATH", label: "Simulation SSH private key path", sensitive: false },
+  { key: "SIM_PRIVATE_KEY_PASSPHRASE", label: "Simulation key passphrase", sensitive: true },
+  { key: "SIM_SSH_PASSWORD", label: "Simulation SSH password", sensitive: true },
+  { key: "SIM_DRONE_START_SCRIPT_PATH", label: "Simulation start_drone.sh path", sensitive: false },
+  { key: "SIM_DRONE_RECORDING_SCRIPT_PATH", label: "Simulation start_recording.sh path", sensitive: false },
+  { key: "SIM_DRONE_MISSION_DIR", label: "Simulation missions directory", sensitive: false },
+  { key: "SIM_DRONE_TMUX_SESSION", label: "Simulation tmux session name", sensitive: false },
+  { key: "SIM_DRONE_TMUX_CAPTURE_LINES", label: "Simulation tmux log lines", sensitive: false },
+  { key: "SIM_DRONE_TMUX_STOP_GRACE_SECONDS", label: "Simulation tmux stop grace seconds", sensitive: false },
+  { key: "SIM_MAVROS_FCU_URL", label: "Simulation MAVROS FCU URL", sensitive: false },
+  { key: "SIM_DRONE_MISSION_EXTRA_ARGS", label: "Simulation extra ros2 launch args", sensitive: false },
+  { key: "SIM_NOVNC_ORIGIN", label: "Simulation noVNC URL", sensitive: false },
+  { key: "SIM_AUTOSTOP_ON_DISCONNECT", label: "Simulation auto-stop compose on mode switch/disconnect (0|1)", sensitive: false },
   { key: "RECONNECT_BACKOFF_MS", label: "Reconnect backoff (ms)", sensitive: false },
 ];
 

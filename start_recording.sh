@@ -22,6 +22,8 @@ ETH_GIMBAL_IF="${ETH_GIMBAL_IF:-eth0}"
 ETH_GIMBAL_IP="${ETH_GIMBAL_IP:-192.168.144.10/24}"
 BAG_DIR="${BAG_DIR:-/home/$USER/drone_workspace/bags}"
 MAVROS_READY_DELAY="${MAVROS_READY_DELAY:-2}"
+# Physical default is USB serial; for SITL use e.g. MAVROS_FCU_URL=udp://:14540@
+MAVROS_FCU_URL="${MAVROS_FCU_URL:-serial:///dev/ttyACM0:921600}"
 BAG_STEM="${BAG_STEM:-flight_$(date +%Y%m%d_%H%M%S)}"
 # sqlite3 tends to finalize more reliably than mcap for short runs; override with BAG_STORAGE=mcap if desired.
 BAG_STORAGE="${BAG_STORAGE:-sqlite3}"
@@ -103,7 +105,7 @@ drone_recording_steps() {
   fi
 
   # --- 2) mavros (background)
-  ros2 launch mavros px4.launch fcu_url:=serial:///dev/ttyACM0:921600 &
+  ros2 launch mavros px4.launch fcu_url:="$MAVROS_FCU_URL" &
   MAVROS_PID=$!
   sleep "$MAVROS_READY_DELAY"
 

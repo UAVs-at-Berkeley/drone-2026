@@ -8,5 +8,7 @@ if [[ -n "${DRONE_ROS_SOURCED:-}" ]]; then
 fi
 
 source /opt/ros/jazzy/setup.bash
-source ~/drone_workspace/drone-2026/ros_workspace/install/setup.bash
+# Override for alternate workspace layout (e.g. SITL container path).
+DRONE_ROS_INSTALL="${DRONE_ROS_INSTALL:-~/drone_workspace/drone-2026/ros_workspace/install/setup.bash}"
+source "$DRONE_ROS_INSTALL"
 export DRONE_ROS_SOURCED=1
