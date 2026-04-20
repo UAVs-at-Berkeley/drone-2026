@@ -32,6 +32,12 @@ export default function App() {
   const [followLog, setFollowLog] = useState(true);
   const followLogRef = useRef(true);
   const tmuxPreRef = useRef(null);
+  const [envRows, setEnvRows] = useState(null);
+  const [envDraft, setEnvDraft] = useState({});
+  const [envNotice, setEnvNotice] = useState("");
+  const [envPanelBusy, setEnvPanelBusy] = useState(false);
+  const [envPanelError, setEnvPanelError] = useState("");
+  const [envSaveBusy, setEnvSaveBusy] = useState(false);
 
   useEffect(() => {
     followLogRef.current = followLog;
@@ -41,9 +47,7 @@ export default function App() {
     api
       .prefill()
       .then((data) => {
-        if (data?.sshPassword) {
-          setSshPassword(data.sshPassword);
-        }
+        setSshPassword(typeof data?.sshPassword === "string" ? data.sshPassword : "");
       })
       .catch(() => {});
   }, []);
@@ -145,6 +149,51 @@ export default function App() {
     }
   }
 
+  async function loadEnvPanel() {
+    setEnvPanelBusy(true);
+    setEnvPanelError("");
+    try {
+      const data = await api.getSettingsEnv();
+      const draft = {};
+      for (const f of data.fields) {
+        draft[f.key] = f.value ?? "";
+      }
+      setEnvDraft(draft);
+      setEnvRows(data.fields.map(({ key, label, sensitive }) => ({ key, label, sensitive })));
+      setEnvNotice(data.notice || "");
+    } catch (error) {
+      setEnvPanelError(error.message);
+      setEnvRows(null);
+    } finally {
+      setEnvPanelBusy(false);
+    }
+  }
+
+  async function handleEnvDetailsToggle(e) {
+    if (e.currentTarget.open) {
+      await loadEnvPanel();
+    }
+  }
+
+  async function saveEnvToDisk() {
+    if (!envRows) {
+      return;
+    }
+    setEnvSaveBusy(true);
+    setInfo("");
+    try {
+      const result = await api.putSettingsEnv(envDraft);
+      setInfo(result.message || "Saved backend .env.");
+      await loadEnvPanel();
+      const pre = await api.prefill();
+      setSshPassword(typeof pre?.sshPassword === "string" ? pre.sshPassword : "");
+    } catch (error) {
+      setInfo(error.message);
+    } finally {
+      setEnvSaveBusy(false);
+    }
+  }
+
   async function stopMission() {
     setBusy(true);
     setInfo("");
@@ -213,6 +262,44 @@ export default function App() {
   return (
     <main className="page">
       <h1>Drone Control</h1>
+
+      <details className="panel env-details" onToggle={handleEnvDetailsToggle}>
+        <summary>Backend environment (.env)</summary>
+        <p className="tmux-log-hint">
+          View or edit variables stored in <code>application/backend/.env</code>. Saving writes the file and
+          reloads settings in this backend process (except <code>PORT</code>, which needs a manual restart).
+        </p>
+        {envNotice ? <p className="tmux-log-hint">{envNotice}</p> : null}
+        {envPanelBusy ? <p>Loading…</p> : null}
+        {envPanelError ? <p className="env-panel-error">{envPanelError}</p> : null}
+        {envRows &&
+          envRows.map((row) => (
+            <div className="env-field-row" key={row.key}>
+              <label>
+                {row.label}
+                <span className="env-key-tag">{row.key}</span>
+                <input
+                  type={row.sensitive ? "password" : "text"}
+                  autoComplete="off"
+                  value={envDraft[row.key] ?? ""}
+                  onChange={(e) => setEnvDraft((prev) => ({ ...prev, [row.key]: e.target.value }))}
+                  disabled={envSaveBusy}
+                />
+              </label>
+            </div>
+          ))}
+        {envRows ? (
+          <div className="env-actions">
+            <button type="button" onClick={saveEnvToDisk} disabled={envSaveBusy || busy}>
+              {envSaveBusy ? "Saving…" : "Save .env"}
+            </button>
+            <button type="button" onClick={loadEnvPanel} disabled={envPanelBusy || envSaveBusy} className="btn-secondary">
+              Reload from disk
+            </button>
+          </div>
+        ) : null}
+      </details>
+
       <section className="panel">
         <p>
           <strong>Status:</strong> {statusLabel}

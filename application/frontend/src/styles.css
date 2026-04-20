@@ -81,6 +81,56 @@ button:disabled {
   user-select: none;
 }
 
+.env-details summary {
+  cursor: pointer;
+  font-weight: 600;
+  user-select: none;
+}
+
+.env-details summary::-webkit-details-marker {
+  color: #94a3b8;
+}
+
+.env-field-row {
+  margin-bottom: 14px;
+}
+
+.env-field-row label {
+  display: block;
+  font-size: 0.9rem;
+  color: #cbd5e1;
+}
+
+.env-key-tag {
+  display: block;
+  margin-top: 2px;
+  margin-bottom: 6px;
+  font-size: 0.75rem;
+  color: #64748b;
+  font-family: ui-monospace, "Cascadia Mono", "Segoe UI Mono", Menlo, Consolas, monospace;
+}
+
+.env-actions {
+  margin-top: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+button.btn-secondary {
+  background: #334155;
+}
+
+button.btn-secondary:hover:not(:disabled) {
+  background: #475569;
+}
+
+.env-panel-error {
+  color: #f87171;
+  margin-bottom: 8px;
+}
+
 .tmux-log {
   margin: 0;
   max-height: 320px;

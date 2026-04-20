@@ -34,4 +34,10 @@ export const api = {
     }),
   startPassiveRecording: () => request("/flight/start-passive", { method: "POST" }),
   stopFlight: () => request("/flight/stop", { method: "POST" }),
+  getSettingsEnv: () => request("/settings/env"),
+  putSettingsEnv: (values) =>
+    request("/settings/env", {
+      method: "PUT",
+      body: JSON.stringify({ values }),
+    }),
 };
