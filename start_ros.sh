@@ -9,6 +9,11 @@ fi
 
 source /opt/ros/jazzy/setup.bash
 # Override for alternate workspace layout (e.g. SITL container path).
-DRONE_ROS_INSTALL="${DRONE_ROS_INSTALL:-~/drone_workspace/drone-2026/ros_workspace/install/setup.bash}"
+# Use $HOME (not ~) so the default expands reliably in non-interactive shells.
+DRONE_ROS_INSTALL="${DRONE_ROS_INSTALL:-$HOME/drone_workspace/drone-2026/ros_workspace/install/setup.bash}"
+if [[ ! -f "$DRONE_ROS_INSTALL" ]]; then
+  echo "start_ros.sh: workspace setup not found: $DRONE_ROS_INSTALL" >&2
+  return 1 2>/dev/null || exit 1
+fi
 source "$DRONE_ROS_INSTALL"
 export DRONE_ROS_SOURCED=1

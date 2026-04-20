@@ -1,4 +1,7 @@
 import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { spawn } from "node:child_process";
 import { Client } from "ssh2";
 import SftpClient from "ssh2-sftp-client";
 import { expandHomePath, getModeConfig, normalizeMode } from "./config.js";
@@ -19,6 +22,28 @@ const defaultState = {
   lastConnectedAt: null,
   lastHeartbeatAt: null,
 };
+
+function runCommand(command, args) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"] });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk.toString();
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk.toString();
+    });
+    child.on("error", (error) => reject(error));
+    child.on("close", (code) => {
+      if (code === 0) {
+        resolve({ code, stdout, stderr });
+        return;
+      }
+      reject(new Error(stderr.trim() || stdout.trim() || `${command} failed (${code})`));
+    });
+  });
+}
 
 export class DroneSessionManager {
   constructor() {
@@ -116,7 +141,16 @@ export class DroneSessionManager {
     if (options.mode !== undefined && options.mode !== null) {
       await this.setMode(options.mode);
     }
-    const modeCfg = this.getModeConfig();
+    if (this.mode === "sim") {
+      return this.connectSimContainer();
+    }
+    const baseModeCfg = this.getModeConfig();
+    const modeCfg = {
+      ...baseModeCfg,
+      host: options.host || baseModeCfg.host,
+      port: options.port ?? baseModeCfg.port,
+      user: options.user || baseModeCfg.user,
+    };
     const effectivePwd = this.resolveEffectivePassword(options);
     if (!this.canAttemptConnect(modeCfg, effectivePwd)) {
       this.setState({
@@ -190,6 +224,34 @@ export class DroneSessionManager {
     return this.getState();
   }
 
+  async connectSimContainer() {
+    if (this.state.sshConnected) {
+      return this.getState();
+    }
+    this.setState({ connectionState: "connecting", lastError: "" });
+    try {
+      await this.execInSim("true");
+      this.remoteHome = "/home/sim";
+      const now = new Date().toISOString();
+      this.setState({
+        connectionState: "connected_idle",
+        sshConnected: true,
+        lastConnectedAt: now,
+        lastHeartbeatAt: now,
+      });
+      await this.refreshFlightState();
+      return this.getState();
+    } catch (err) {
+      const message = err?.message || String(err);
+      this.setState({
+        connectionState: "disconnected",
+        sshConnected: false,
+        lastError: message,
+      });
+      throw err;
+    }
+  }
+
   /**
    * SFTP does not expand "~" like a shell. Resolve ~/... using the remote user's $HOME.
    */
@@ -222,6 +284,15 @@ export class DroneSessionManager {
   }
 
   async disconnect() {
+    if (this.mode === "sim") {
+      this.remoteHome = "";
+      this.sessionPassword = null;
+      this.setState({
+        sshConnected: false,
+        connectionState: this.state.inFlight ? "in_flight_disconnected" : "disconnected",
+      });
+      return this.getState();
+    }
     if (this.sftp) {
       await this.sftp.end().catch(() => {});
       this.sftp = null;
@@ -240,6 +311,9 @@ export class DroneSessionManager {
   }
 
   async exec(command) {
+    if (this.mode === "sim") {
+      return this.execInSim(command);
+    }
     if (!this.client) {
       throw new Error("Not connected.");
     }
@@ -263,11 +337,18 @@ export class DroneSessionManager {
     });
   }
 
+  async execInSim(command) {
+    const modeCfg = this.getModeConfig();
+    const containerName = modeCfg.containerName || "drone-2026-sim";
+    const user = modeCfg.user || "sim";
+    return runCommand("docker", ["exec", "-u", user, containerName, "sh", "-lc", command]);
+  }
+
   /**
    * Read-only snapshot of the drone tmux session pane (ROS / script output).
    */
   async captureTmuxPane() {
-    if (!this.client) {
+    if (this.mode !== "sim" && !this.client) {
       throw new Error("Not connected.");
     }
     const modeCfg = this.getModeConfig();
@@ -282,7 +363,7 @@ export class DroneSessionManager {
   }
 
   async refreshFlightState() {
-    if (!this.client) {
+    if (this.mode !== "sim" && !this.client) {
       return this.getState();
     }
     const modeCfg = this.getModeConfig();
@@ -301,6 +382,12 @@ export class DroneSessionManager {
   }
 
   async ensureRemoteMissionDir() {
+    if (this.mode === "sim") {
+      const modeCfg = this.getModeConfig();
+      const missionDir = this.resolveRemotePath(modeCfg.missionDir);
+      await this.exec(`mkdir -p "${missionDir}"`);
+      return;
+    }
     if (!this.sftp) {
       throw new Error("SFTP is not connected.");
     }
@@ -310,6 +397,27 @@ export class DroneSessionManager {
   }
 
   async uploadMission(filename, yamlContent) {
+    if (this.mode === "sim") {
+      await this.ensureRemoteMissionDir();
+      const modeCfg = this.getModeConfig();
+      const missionDir = this.resolveRemotePath(modeCfg.missionDir);
+      const remotePath = `${missionDir.replace(/\/+$/, "")}/${filename}`;
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "drone-mission-"));
+      const localFile = path.join(tmpDir, filename);
+      try {
+        fs.writeFileSync(localFile, yamlContent, "utf8");
+        const containerName = modeCfg.containerName || "drone-2026-sim";
+        await runCommand("docker", ["cp", localFile, `${containerName}:${remotePath}`]);
+      } finally {
+        try {
+          fs.unlinkSync(localFile);
+        } catch {}
+        try {
+          fs.rmdirSync(tmpDir);
+        } catch {}
+      }
+      return remotePath;
+    }
     if (!this.sftp) {
       throw new Error("SFTP is not connected.");
     }
@@ -324,6 +432,9 @@ export class DroneSessionManager {
   buildInlineEnv(modeCfg, { includeMissionArgs = false } = {}) {
     const quote = (value) => `"${String(value).replace(/(["\\$`])/g, "\\$1")}"`;
     const vars = [];
+    if (modeCfg.rosInstallSetupPath) {
+      vars.push(`DRONE_ROS_INSTALL=${quote(modeCfg.rosInstallSetupPath)}`);
+    }
     if (modeCfg.mavrosFcuUrl) {
       vars.push(`MAVROS_FCU_URL=${quote(modeCfg.mavrosFcuUrl)}`);
     }

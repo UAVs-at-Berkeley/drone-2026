@@ -40,6 +40,24 @@ function hasCrLfShebangError(text) {
   return /bash\\r|bash\r|No such file or directory.*bash|use -\[v\]S to pass options in shebang lines/i.test(text);
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isTransientSimSshError(error) {
+  const msg = (error?.message || String(error)).toLowerCase();
+  return (
+    msg.includes("econnrefused") ||
+    msg.includes("timed out while waiting for handshake") ||
+    msg.includes("etimedout")
+  );
+}
+
+function isRefusedError(error) {
+  const msg = (error?.message || String(error)).toLowerCase();
+  return msg.includes("econnrefused") || msg.includes("connection refused");
+}
+
 app.use(cors());
 app.use(express.json({ limit: "1mb" }));
 
@@ -232,7 +250,48 @@ app.post("/drone/connect", async (req, res) => {
     annotate("Attempting SSH handshake to target.");
     let state;
     try {
-      state = await manager.connect({ mode, password });
+      if (mode === "sim") {
+        const maxAttempts = 12;
+        const retryDelayMs = 1500;
+        let lastError;
+        let connectOptions = { mode, password };
+        for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+          try {
+            if (attempt > 1) {
+              annotate(`SSH retry ${attempt}/${maxAttempts}...`);
+            }
+            state = await manager.connect(connectOptions);
+            lastError = null;
+            break;
+          } catch (error) {
+            lastError = error;
+            if (!isTransientSimSshError(error) || attempt === maxAttempts) {
+              throw error;
+            }
+            // If loopback is refused, attempt direct container-IP fallback.
+            if (isRefusedError(error)) {
+              const currentHost = (connectOptions.host || "").toLowerCase();
+              if (!currentHost || currentHost === "127.0.0.1" || currentHost === "localhost") {
+                connectOptions = {
+                  mode,
+                  password,
+                  host: "host.docker.internal",
+                  port: config.sim.port,
+                };
+                annotate(
+                  `Loopback refused; retrying via host bridge ${connectOptions.host}:${connectOptions.port}.`
+                );
+              }
+            }
+            await sleep(retryDelayMs);
+          }
+        }
+        if (lastError) {
+          throw lastError;
+        }
+      } else {
+        state = await manager.connect({ mode, password });
+      }
     } catch (connectError) {
       if (mode !== "sim") {
         throw connectError;

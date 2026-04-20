@@ -95,6 +95,22 @@ export default function App() {
     return "Active";
   }, [status.inFlight, status.runMode]);
 
+  const resolvedSimViewerUrl = useMemo(() => {
+    const raw = status.simViewerUrl || "";
+    if (!raw) {
+      return "";
+    }
+    try {
+      const parsed = new URL(raw, window.location.origin);
+      if (parsed.hostname === "127.0.0.1" || parsed.hostname === "localhost") {
+        parsed.hostname = window.location.hostname;
+      }
+      return parsed.toString();
+    } catch {
+      return raw;
+    }
+  }, [status.simViewerUrl]);
+
   async function refreshStatus() {
     try {
       const next = await api.status();
@@ -392,7 +408,7 @@ export default function App() {
         ) : null}
       </section>
 
-      {simModeActive && status.simViewerUrl ? (
+      {simModeActive && resolvedSimViewerUrl ? (
         <section className="panel">
           <h2>Simulation view (Gazebo via noVNC)</h2>
           <p className="tmux-log-hint">
@@ -400,7 +416,7 @@ export default function App() {
           </p>
           <iframe
             title="Simulation noVNC stream"
-            src={status.simViewerUrl}
+            src={resolvedSimViewerUrl}
             className="sim-viewer"
             allow="clipboard-read; clipboard-write"
           />

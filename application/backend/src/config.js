@@ -14,12 +14,16 @@ const DEFAULT_START_SCRIPT_PATH = "/home/pi/drone_workspace/drone-2026/start_dro
 const DEFAULT_RECORDING_SCRIPT_PATH = "/home/pi/drone_workspace/drone-2026/start_recording.sh";
 const DEFAULT_MISSION_DIR =
   "/home/pi/drone_workspace/drone-2026/ros_workspace/src/uav_mission/missions";
+const DEFAULT_PHYSICAL_ROS_INSTALL =
+  "/home/pi/drone_workspace/drone-2026/ros_workspace/install/setup.bash";
 const DEFAULT_SIM_START_SCRIPT_PATH = "/home/sim/drone_workspace/drone-2026/start_drone.sh";
 const DEFAULT_SIM_RECORDING_SCRIPT_PATH = "/home/sim/drone_workspace/drone-2026/start_recording.sh";
 const DEFAULT_SIM_MISSION_DIR =
   "/home/sim/drone_workspace/drone-2026/ros_workspace/src/uav_mission/missions";
+const DEFAULT_SIM_ROS_INSTALL =
+  "/home/sim/drone_workspace/drone-2026/ros_workspace/install/setup.bash";
 const DEFAULT_SIM_COMPOSE_FILE = path.join(REPO_ROOT, "SITL", "web-sim", "docker-compose.yml");
-const DEFAULT_SIM_NOVNC_ORIGIN = "http://127.0.0.1:6080/vnc.html?autoconnect=1&resize=remote&path=websockify";
+const DEFAULT_SIM_NOVNC_ORIGIN = "http://127.0.0.1:6080/vnc.html?autoconnect=1&resize=scale&path=websockify";
 
 function buildConfigFromProcessEnv() {
   const shared = {
@@ -40,6 +44,7 @@ function buildConfigFromProcessEnv() {
       startScriptPath: process.env.DRONE_START_SCRIPT_PATH || DEFAULT_START_SCRIPT_PATH,
       recordingScriptPath: process.env.DRONE_RECORDING_SCRIPT_PATH || DEFAULT_RECORDING_SCRIPT_PATH,
       missionDir: process.env.DRONE_MISSION_DIR || DEFAULT_MISSION_DIR,
+      rosInstallSetupPath: process.env.DRONE_ROS_INSTALL || DEFAULT_PHYSICAL_ROS_INSTALL,
       tmuxSession: process.env.DRONE_TMUX_SESSION || "drone_control",
       /** Lines of tmux scrollback to return for the log panel (negative -S value). */
       tmuxCaptureLines: Math.max(100, Number(process.env.DRONE_TMUX_CAPTURE_LINES || 2500)),
@@ -59,6 +64,7 @@ function buildConfigFromProcessEnv() {
     sim: {
       composeFile: process.env.SIM_COMPOSE_FILE || DEFAULT_SIM_COMPOSE_FILE,
       composeProject: process.env.SIM_COMPOSE_PROJECT || "",
+      containerName: process.env.SIM_CONTAINER_NAME || "drone-2026-sim",
       host: process.env.SIM_SSH_HOST || "127.0.0.1",
       port: Number(process.env.SIM_SSH_PORT || 22220),
       user: process.env.SIM_SSH_USER || "sim",
@@ -68,6 +74,7 @@ function buildConfigFromProcessEnv() {
       startScriptPath: process.env.SIM_DRONE_START_SCRIPT_PATH || DEFAULT_SIM_START_SCRIPT_PATH,
       recordingScriptPath: process.env.SIM_DRONE_RECORDING_SCRIPT_PATH || DEFAULT_SIM_RECORDING_SCRIPT_PATH,
       missionDir: process.env.SIM_DRONE_MISSION_DIR || DEFAULT_SIM_MISSION_DIR,
+      rosInstallSetupPath: process.env.SIM_DRONE_ROS_INSTALL || DEFAULT_SIM_ROS_INSTALL,
       tmuxSession: process.env.SIM_DRONE_TMUX_SESSION || "drone_control",
       tmuxCaptureLines: Math.max(100, Number(process.env.SIM_DRONE_TMUX_CAPTURE_LINES || 2500)),
       tmuxStopGraceSeconds: (() => {

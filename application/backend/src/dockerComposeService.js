@@ -80,4 +80,27 @@ export class DockerComposeService {
     const safeTail = Math.max(20, Math.min(500, Number(tailLines) || 120));
     return runCommand("docker", this.composeArgs(["logs", "--no-color", "--tail", String(safeTail)]));
   }
+
+  async serviceContainerId(serviceName = "sim") {
+    const sim = this.getSimConfig();
+    if (!sim.composeFile || !fs.existsSync(sim.composeFile)) {
+      return "";
+    }
+    const { stdout } = await runCommand("docker", this.composeArgs(["ps", "-q", serviceName]));
+    return (stdout || "").trim();
+  }
+
+  async serviceContainerIp(serviceName = "sim") {
+    const id = await this.serviceContainerId(serviceName);
+    if (!id) {
+      return "";
+    }
+    const { stdout } = await runCommand("docker", [
+      "inspect",
+      "-f",
+      "{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}",
+      id,
+    ]);
+    return (stdout || "").trim();
+  }
 }

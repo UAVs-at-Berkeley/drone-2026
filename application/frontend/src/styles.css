@@ -150,7 +150,10 @@ button.btn-secondary:hover:not(:disabled) {
 
 .sim-viewer {
   width: 100%;
-  min-height: 500px;
+  aspect-ratio: 16 / 9;
+  min-height: 420px;
+  max-height: 75vh;
+  height: auto;
   border: 1px solid #334155;
   border-radius: 6px;
   background: #0b1220;
