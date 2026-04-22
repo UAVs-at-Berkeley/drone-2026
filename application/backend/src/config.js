@@ -84,7 +84,8 @@ function buildConfigFromProcessEnv() {
         return Math.min(300, Math.max(0, Math.round(raw)));
       })(),
       mavrosFcuUrl: process.env.SIM_MAVROS_FCU_URL || "udp://:14540@",
-      missionExtraArgs: process.env.SIM_DRONE_MISSION_EXTRA_ARGS || "use_sim_time:=true include_camera:=false",
+      // Default to wall-clock timing in sim; use_sim_time requires a /clock publisher.
+      missionExtraArgs: process.env.SIM_DRONE_MISSION_EXTRA_ARGS || "include_camera:=false",
       novncOrigin: process.env.SIM_NOVNC_ORIGIN || DEFAULT_SIM_NOVNC_ORIGIN,
       autoStopOnDisconnect: process.env.SIM_AUTOSTOP_ON_DISCONNECT === "1",
     },
