@@ -18,6 +18,11 @@ def generate_launch_description():
         DeclareLaunchArgument("use_sim_time", default_value="false", description="Use simulation time"),
         DeclareLaunchArgument("takeoff_altitude_m", default_value="2.0", description="Offboard takeoff height (m, local ENU z)"),
         DeclareLaunchArgument(
+            "takeoff_altitude_tolerance_m",
+            default_value="0.1",
+            description="Takeoff success tolerance around target altitude (m)",
+        ),
+        DeclareLaunchArgument(
             "mission_file",
             default_value=PathJoinSubstitution([
                 FindPackageShare("uav_mission"),
@@ -34,7 +39,10 @@ def generate_launch_description():
             executable="offboard_takeoff_server",
             name="offboard_takeoff_server",
             output="screen",
-            parameters=[{"use_sim_time": LaunchConfiguration("use_sim_time")}],
+            parameters=[
+                {"use_sim_time": LaunchConfiguration("use_sim_time")},
+                {"takeoff_altitude_tolerance_m": LaunchConfiguration("takeoff_altitude_tolerance_m")},
+            ],
         ),
         Node(
             package="uav_mission",

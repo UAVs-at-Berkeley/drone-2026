@@ -2,7 +2,8 @@
 """
 Offboard takeoff action server — MAVROS offboard prime, OFFBOARD mode, arm, climb to goal altitude.
 
-Completes with success when ExtendedState reports IN_AIR. Does not land.
+Completes with success when ExtendedState reports IN_AIR and altitude is within
+takeoff_altitude_tolerance_m of the requested goal altitude. Does not land.
 
 After success this node stops publishing hold setpoints. If the vehicle remains in OFFBOARD,
 another node should publish to /mavros/setpoint_position/local promptly (e.g. waypoint mission).
@@ -27,11 +28,13 @@ SETPOINT_RATE_HZ = 20.0
 REQUEST_INTERVAL_SEC = 5.0
 PRIME_COUNT = 100
 SETPOINT_PERIOD_SEC = 1.0 / SETPOINT_RATE_HZ
+DEFAULT_TAKEOFF_ALT_TOLERANCE_M = 0.25
 
 
 class OffboardTakeoffServer(Node):
     def __init__(self):
         super().__init__("offboard_takeoff_server")
+        self.declare_parameter("takeoff_altitude_tolerance_m", DEFAULT_TAKEOFF_ALT_TOLERANCE_M)
         self._cb_group = ReentrantCallbackGroup()
 
         self._current_state = State()
@@ -39,6 +42,7 @@ class OffboardTakeoffServer(Node):
         self._current_state.mode = ""
         self._current_state.armed = False
         self._landed_state = LANDED_STATE_ON_GROUND
+        self._current_altitude_m = None
 
         qos = QoSProfile(
             depth=10,
@@ -56,6 +60,13 @@ class OffboardTakeoffServer(Node):
             ExtendedState,
             "/mavros/extended_state",
             self._extended_state_cb,
+            qos,
+            callback_group=self._cb_group,
+        )
+        self.create_subscription(
+            PoseStamped,
+            "/mavros/local_position/pose",
+            self._local_pose_cb,
             qos,
             callback_group=self._cb_group,
         )
@@ -90,6 +101,9 @@ class OffboardTakeoffServer(Node):
 
     def _extended_state_cb(self, msg: ExtendedState):
         self._landed_state = msg.landed_state
+
+    def _local_pose_cb(self, msg: PoseStamped):
+        self._current_altitude_m = float(msg.pose.position.z)
 
     def _publish_feedback(self, goal_handle, phase: str, detail: str = ""):
         fb = OffboardTakeoff.Feedback()
@@ -144,6 +158,7 @@ class OffboardTakeoffServer(Node):
 
     def _execute_callback(self, goal_handle):
         altitude_m = float(goal_handle.request.takeoff_altitude_m)
+        tolerance_m = float(self.get_parameter("takeoff_altitude_tolerance_m").value)
         phase = "wait_connection"
         prime_count = 0
         last_request_sec = 0.0
@@ -206,14 +221,33 @@ class OffboardTakeoffServer(Node):
                 continue
 
             if phase == "takeoff_wait":
-                if self._landed_state == LANDED_STATE_IN_AIR:
-                    self.get_logger().info("In air. Takeoff complete.")
-                    publish_phase("airborne", "Reached IN_AIR")
+                if self._landed_state != LANDED_STATE_IN_AIR:
+                    time.sleep(SETPOINT_PERIOD_SEC)
+                    continue
+
+                if self._current_altitude_m is None:
+                    publish_phase("takeoff_wait", "In air; waiting for altitude estimate")
+                    time.sleep(SETPOINT_PERIOD_SEC)
+                    continue
+
+                alt_error_m = abs(self._current_altitude_m - altitude_m)
+                if alt_error_m <= tolerance_m:
+                    self.get_logger().info(
+                        "Takeoff complete at altitude %.2f m (target %.2f m, tol %.2f m)."
+                        % (self._current_altitude_m, altitude_m, tolerance_m)
+                    )
+                    publish_phase("airborne", "Reached target altitude")
                     result = OffboardTakeoff.Result()
                     result.success = True
                     result.message = "Airborne"
                     goal_handle.succeed(result)
                     return result
+
+                publish_phase(
+                    "takeoff_wait",
+                    "Climbing to %.2f m (current %.2f m, |err| %.2f m)"
+                    % (altitude_m, self._current_altitude_m, alt_error_m),
+                )
                 time.sleep(SETPOINT_PERIOD_SEC)
                 continue
 
