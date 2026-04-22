@@ -92,6 +92,13 @@ def generate_launch_description():
         ),
         Node(
             package="uav_mission",
+            executable="payload_drop_node",
+            name="payload_drop_node",
+            output="screen",
+            parameters=[{"use_sim_time": LaunchConfiguration("use_sim_time")}],
+        ),
+        Node(
+            package="uav_mission",
             executable="mapping_node",
             name="mapping_node",
             output="screen",

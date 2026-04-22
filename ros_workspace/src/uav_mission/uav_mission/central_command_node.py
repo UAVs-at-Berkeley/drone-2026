@@ -16,6 +16,7 @@ from uav_msgs.action import (
     OffboardTakeoff,
     ReturnToHome,
     StartObjectLocalization,
+    StartPayloadDrop,
     StartTimeTrial,
 )
 from uav_msgs.msg import MissionStatus
@@ -63,6 +64,14 @@ def _goal_land(_node: "CentralCommandNode", step: Dict[str, Any]) -> Any:
     return g
 
 
+def _goal_payload_drop(_node: "CentralCommandNode", step: Dict[str, Any]) -> Any:
+    g = StartPayloadDrop.Goal()
+    g.target_latitude_deg = float(step.get("target_latitude_deg", 0.0))
+    g.target_longitude_deg = float(step.get("target_longitude_deg", 0.0))
+    g.cruise_altitude_m = float(step.get("cruise_altitude_m", 15.0))
+    return g
+
+
 STEP_REGISTRY: Dict[str, StepSpec] = {
     "takeoff": (OffboardTakeoff, "offboard_takeoff", _goal_takeoff),
     "time_trial": (StartTimeTrial, "/time_trial/start", _goal_time_trial),
@@ -73,6 +82,7 @@ STEP_REGISTRY: Dict[str, StepSpec] = {
     ),
     "return_to_home": (ReturnToHome, "return_to_home", _goal_return_to_home),
     "land": (OffboardLand, "offboard_land", _goal_land),
+    "payload_drop": (StartPayloadDrop, "/payload_drop/start", _goal_payload_drop),
 }
 
 

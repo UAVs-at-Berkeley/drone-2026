@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import os
 from typing import Any, Dict, List
-
 import yaml
 
 ALLOWED_STEP_IDS = frozenset(
@@ -21,6 +20,7 @@ ALLOWED_STEP_IDS = frozenset(
         "object_localization",
         "return_to_home",
         "land",
+        "payload_drop",
     }
 )
 

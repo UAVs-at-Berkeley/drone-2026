@@ -1,5 +1,4 @@
 import os
-
 from setuptools import find_packages, setup
 
 package_name = "uav_mission"
@@ -49,6 +48,7 @@ setup(
             "waypoint_node = uav_mission.waypoint_node:main",
             "time_trial_node = uav_mission.time_trial_node:main",
             "object_localization_node = uav_mission.object_localization_node:main",
+            "payload_drop_node = uav_mission.payload_drop_node:main",
         ],
     },
 )
