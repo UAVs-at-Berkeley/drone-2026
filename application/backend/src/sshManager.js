@@ -352,8 +352,13 @@ export class DroneSessionManager {
       throw new Error("Not connected.");
     }
     const modeCfg = this.getModeConfig();
-    const sessionName = modeCfg.tmuxSession;
-    const lines = modeCfg.tmuxCaptureLines;
+    return this.captureTmuxPaneForSession(modeCfg.tmuxSession, modeCfg.tmuxCaptureLines);
+  }
+
+  async captureTmuxPaneForSession(sessionName, lines = 1000) {
+    if (this.mode !== "sim" && !this.client) {
+      throw new Error("Not connected.");
+    }
     const check = await this.exec(`tmux has-session -t ${sessionName} 2>/dev/null; echo $?`);
     if (!check.stdout.trim().endsWith("0")) {
       return { text: "", hasSession: false };

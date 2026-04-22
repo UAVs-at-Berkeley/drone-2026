@@ -6,6 +6,7 @@ import { validateMissionFilename, validateMissionYaml } from "./missionValidatio
 import { MANAGED_ENV_FIELDS, MANAGED_ENV_KEYS } from "./managedEnv.js";
 import { getManagedEnvValuesForApi, writeManagedEnvUpdates } from "./envFile.js";
 import { DockerComposeService } from "./dockerComposeService.js";
+import { estimateStartupProgress } from "./startupProgress.js";
 
 const app = express();
 const manager = new DroneSessionManager();
@@ -202,7 +203,36 @@ app.get("/drone/status", async (_req, res) => {
     if (manager.getState().sshConnected) {
       await manager.refreshFlightState();
     }
-    res.json(manager.getState());
+    const state = manager.getState();
+    let simBootLogText = "";
+    let simGuiLogText = "";
+    let missionLogText = "";
+    if (state.sshConnected) {
+      const missionLog = await manager.captureTmuxPane().catch(() => ({ text: "" }));
+      missionLogText = missionLog.text || "";
+      if (state.mode === "sim") {
+        const startupSession = config.sim.startupTmuxSession || "sitl_core";
+        const simBootLog = await manager.captureTmuxPaneForSession(startupSession, 2000).catch(() => ({ text: "" }));
+        simBootLogText = simBootLog.text || "";
+        const simGuiLog = await manager.captureTmuxPaneForSession("sitl_gui", 1000).catch(() => ({ text: "" }));
+        simGuiLogText = simGuiLog.text || "";
+      }
+    }
+    const { simSetupProgress, missionStartupProgress } = estimateStartupProgress({
+      state,
+      connectTraceText: Array.isArray(state.connectTrace) ? state.connectTrace.join("\n") : "",
+      composeLogsText: state.composeLogsTail || "",
+      simBootLogText,
+      simGuiLogText,
+      missionLogText,
+    });
+    res.json({
+      ...state,
+      simSetupProgress,
+      missionStartupProgress,
+      // Backward-compatible field for older UI consumers.
+      startupProgress: missionStartupProgress,
+    });
   } catch (error) {
     res.status(500).json({ error: error.message, state: manager.getState() });
   }

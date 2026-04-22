@@ -21,6 +21,18 @@ export default function App() {
     mode: "physical",
     simViewerUrl: "",
     lastError: "",
+    simSetupProgress: {
+      percent: 0,
+      step: "Idle",
+      detail: "Waiting to start.",
+      complete: false,
+    },
+    missionStartupProgress: {
+      percent: 0,
+      step: "Idle",
+      detail: "Waiting to start.",
+      complete: false,
+    },
   });
   const [missionName, setMissionName] = useState("mission_ui.yaml");
   const [missionYaml, setMissionYaml] = useState(defaultMission);
@@ -94,6 +106,22 @@ export default function App() {
     if (status.runMode === "full") return "Full takeoff (recording + mission)";
     return "Active";
   }, [status.inFlight, status.runMode]);
+
+  const simSetupProgress = status.simSetupProgress || {
+    percent: 0,
+    step: "Idle",
+    detail: "Waiting to start.",
+    complete: false,
+  };
+
+  const missionStartupProgress = status.missionStartupProgress || {
+    percent: 0,
+    step: "Idle",
+    detail: "Waiting to start.",
+    complete: false,
+  };
+
+  const clampPct = (value) => Math.max(0, Math.min(100, Number(value) || 0));
 
   const resolvedSimViewerUrl = useMemo(() => {
     const raw = status.simViewerUrl || "";
@@ -367,6 +395,36 @@ export default function App() {
         <p>
           <strong>Activity:</strong> {activityLabel}
         </p>
+        <div className="startup-progress">
+          <div className="startup-progress-head">
+            <strong>Simulation setup:</strong>
+            <span>{clampPct(simSetupProgress.percent)}%</span>
+          </div>
+          <div className="startup-progress-track" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={clampPct(simSetupProgress.percent)}>
+            <div
+              className="startup-progress-fill"
+              style={{ width: `${clampPct(simSetupProgress.percent)}%` }}
+            />
+          </div>
+          <p className="startup-progress-step">
+            <strong>{simSetupProgress.step || "Idle"}:</strong> {simSetupProgress.detail || "Waiting to start."}
+          </p>
+        </div>
+        <div className="startup-progress">
+          <div className="startup-progress-head">
+            <strong>Drone startup (after Takeoff):</strong>
+            <span>{clampPct(missionStartupProgress.percent)}%</span>
+          </div>
+          <div className="startup-progress-track mission-progress-track" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={clampPct(missionStartupProgress.percent)}>
+            <div
+              className="startup-progress-fill mission-progress-fill"
+              style={{ width: `${clampPct(missionStartupProgress.percent)}%` }}
+            />
+          </div>
+          <p className="startup-progress-step">
+            <strong>{missionStartupProgress.step || "Idle"}:</strong> {missionStartupProgress.detail || "Waiting to start."}
+          </p>
+        </div>
         <label>
           Control mode
           <select

@@ -76,6 +76,7 @@ function buildConfigFromProcessEnv() {
       missionDir: process.env.SIM_DRONE_MISSION_DIR || DEFAULT_SIM_MISSION_DIR,
       rosInstallSetupPath: process.env.SIM_DRONE_ROS_INSTALL || DEFAULT_SIM_ROS_INSTALL,
       tmuxSession: process.env.SIM_DRONE_TMUX_SESSION || "drone_control",
+      startupTmuxSession: process.env.SIM_STARTUP_TMUX_SESSION || "sitl_core",
       tmuxCaptureLines: Math.max(100, Number(process.env.SIM_DRONE_TMUX_CAPTURE_LINES || 2500)),
       tmuxStopGraceSeconds: (() => {
         const raw = Number(process.env.SIM_DRONE_TMUX_STOP_GRACE_SECONDS ?? 20);
