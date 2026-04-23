@@ -253,6 +253,7 @@ app.get("/drone/status", async (_req, res) => {
       simBootLogText,
       simGuiLogText,
       missionLogText,
+      smoothing: manager.progressSmoothing,
     });
     res.json({
       ...state,

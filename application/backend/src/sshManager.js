@@ -5,6 +5,7 @@ import { spawn } from "node:child_process";
 import { Client } from "ssh2";
 import SftpClient from "ssh2-sftp-client";
 import { expandHomePath, getModeConfig, normalizeMode } from "./config.js";
+import { createProgressSmoothingState } from "./startupProgress.js";
 
 const defaultState = {
   connectionState: "disconnected",
@@ -55,6 +56,12 @@ export class DroneSessionManager {
     this.remoteHome = "";
     /** Last SSH password used successfully (UI or .env), for reconnect without resending from client. */
     this.sessionPassword = null;
+    /** Mutated by `estimateStartupProgress` for log-delta smoothing (reset on disconnect / mode change). */
+    this.progressSmoothing = createProgressSmoothingState();
+  }
+
+  resetProgressSmoothing() {
+    this.progressSmoothing = createProgressSmoothingState();
   }
 
   getState() {
@@ -83,6 +90,7 @@ export class DroneSessionManager {
     if (this.client || this.sftp) {
       await this.disconnect();
     }
+    this.resetProgressSmoothing();
     this.mode = normalized;
     this.setState({
       mode: normalized,
@@ -284,6 +292,7 @@ export class DroneSessionManager {
   }
 
   async disconnect() {
+    this.resetProgressSmoothing();
     if (this.mode === "sim") {
       this.remoteHome = "";
       this.sessionPassword = null;
