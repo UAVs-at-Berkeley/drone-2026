@@ -45,6 +45,11 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ files, sourceName }),
     }),
+  hotswapSimulationBranch: ({ branch = "main" } = {}) =>
+    request("/sim/hotswap", {
+      method: "POST",
+      body: JSON.stringify({ branch }),
+    }),
   shutdownSimulation: () => request("/sim/shutdown", { method: "POST" }),
   getSettingsEnv: () => request("/settings/env"),
   putSettingsEnv: (values) =>

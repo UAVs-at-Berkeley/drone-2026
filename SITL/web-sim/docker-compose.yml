@@ -8,6 +8,11 @@ services:
       SIM_SSH_PASSWORD: sim
       SITL_MAKE_TARGET: gz_x500
       GZ_PARTITION: drone-2026
+      ENABLE_RANDOM_TARGET: "1"
+      TARGET_RANDOM_RADIUS_M: "20.0"
+      TARGET_MIN_RADIUS_M: "2.0"
+      TARGET_Z_M: "0.0"
+      TARGET_RANDOM_YAW: "1"
     ports:
       - "5900:5900"
       - "6080:6080"

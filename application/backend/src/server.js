@@ -17,6 +17,16 @@ const manager = new DroneSessionManager();
 const dockerCompose = new DockerComposeService(() => config.sim);
 const HOTSWAP_MAX_FILES = 20000;
 const HOTSWAP_MAX_TOTAL_BYTES = 150 * 1024 * 1024;
+const HOTSWAP_REMOTE_REPO_URL = "https://github.com/UAVs-at-Berkeley/drone-2026.git";
+const HOTSWAP_DEFAULT_BRANCH = "main";
+const HOTSWAP_SYNC_RELATIVE_PATHS = [
+  "ros_workspace/src/uav_mission",
+  "ros_workspace/src/uav_msgs",
+  "start_drone.sh",
+  "start_recording.sh",
+  "start_mission_stack.sh",
+  "start_ros.sh",
+];
 
 function runLocalCommand(command, args) {
   return new Promise((resolve, reject) => {
@@ -447,6 +457,61 @@ function isSafeRelativeRepoPath(inputPath) {
   return true;
 }
 
+function isSafeGitBranchName(input) {
+  if (typeof input !== "string") {
+    return false;
+  }
+  const branch = input.trim();
+  if (!branch || branch.length > 120) {
+    return false;
+  }
+  if (branch.startsWith("-") || branch.includes("..") || branch.includes("//")) {
+    return false;
+  }
+  return /^[A-Za-z0-9._/-]+$/.test(branch);
+}
+
+async function materializeRepoFromBranch(branchInput = HOTSWAP_DEFAULT_BRANCH) {
+  const branch = typeof branchInput === "string" ? branchInput.trim() : "";
+  if (!isSafeGitBranchName(branch)) {
+    throw new Error("Invalid branch name.");
+  }
+
+  const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "drone-hotswap-"));
+  const repoRoot = path.join(tmpRoot, "repo");
+
+  try {
+    await runLocalCommand("git", [
+      "clone",
+      "--depth",
+      "1",
+      "--filter=blob:none",
+      "--sparse",
+      "--branch",
+      branch,
+      "--single-branch",
+      HOTSWAP_REMOTE_REPO_URL,
+      repoRoot,
+    ]);
+    await runLocalCommand("git", ["-C", repoRoot, "sparse-checkout", "set", "--no-cone", ...HOTSWAP_SYNC_RELATIVE_PATHS]);
+    for (const relPath of HOTSWAP_SYNC_RELATIVE_PATHS) {
+      const fullSyncPath = path.join(repoRoot, relPath);
+      await fs.access(fullSyncPath);
+    }
+
+    return {
+      tmpRoot,
+      repoRoot,
+      branch,
+      sourceName: HOTSWAP_REMOTE_REPO_URL,
+      syncRelativePaths: HOTSWAP_SYNC_RELATIVE_PATHS,
+    };
+  } catch (error) {
+    await fs.rm(tmpRoot, { recursive: true, force: true }).catch(() => {});
+    throw error;
+  }
+}
+
 async function materializeUploadedRepo(files, sourceName = "") {
   if (!Array.isArray(files) || files.length === 0) {
     throw new Error("No files were provided from the selected repo.");
@@ -504,30 +569,93 @@ async function materializeUploadedRepo(files, sourceName = "") {
   }
 }
 
-async function applyRepoToSimContainer(localRepoRoot) {
+async function applyRepoToSimContainer(localRepoRoot, syncRelativePaths = HOTSWAP_SYNC_RELATIVE_PATHS) {
   await manager.setMode("sim");
   await manager.connect({ mode: "sim" });
 
   const modeCfg = config.sim;
   const containerName = modeCfg.containerName || "drone-2026-sim";
+  const simUser = modeCfg.user || "sim";
   const repoRootInContainer = path.posix.dirname(modeCfg.startScriptPath || "/home/sim/drone_workspace/drone-2026/start_drone.sh");
   const stagingRoot = `${repoRootInContainer}.new`;
   const backupRoot = `${repoRootInContainer}.prev`;
   const rosWorkspace = `${repoRootInContainer}/ros_workspace`;
+  const scopedBackupRoot = path.posix.join(repoRootInContainer, ".hotswap_backup");
+  const normalizedSyncPaths = (Array.isArray(syncRelativePaths) ? syncRelativePaths : [syncRelativePaths])
+    .map((p) => String(p || "").replace(/\\/g, "/").replace(/^\/+/, ""))
+    .filter((p) => p.length > 0);
+  if (normalizedSyncPaths.length === 0) {
+    throw new Error("No sync paths configured for hotswap.");
+  }
+  const execInContainerAsRoot = async (script) => {
+    await runLocalCommand("docker", ["exec", "-u", "root", containerName, "bash", "-lc", script]);
+  };
 
-  await manager.exec(`rm -rf ${quoteShell(stagingRoot)} ${quoteShell(backupRoot)} && mkdir -p ${quoteShell(stagingRoot)}`);
-  await runLocalCommand("docker", ["cp", `${localRepoRoot}${path.sep}.`, `${containerName}:${stagingRoot}`]);
+  const syncEntries = [];
+  for (const relPath of normalizedSyncPaths) {
+    const sourcePath = path.join(localRepoRoot, relPath);
+    await fs.access(sourcePath);
+    const sourceStat = await fs.lstat(sourcePath);
+    const targetPath = path.posix.join(repoRootInContainer, relPath);
+    syncEntries.push({
+      relPath,
+      sourcePath,
+      isDirectory: sourceStat.isDirectory(),
+      targetPath,
+      targetParent: path.posix.dirname(targetPath),
+      stagingPath: `${targetPath}.new`,
+      legacyBackupPath: `${targetPath}.prev`,
+      backupPath: path.posix.join(scopedBackupRoot, relPath),
+    });
+  }
 
-  await manager.exec(
-    `test -d ${quoteShell(`${stagingRoot}/ros_workspace`)} && test -f ${quoteShell(
-      `${stagingRoot}/start_drone.sh`
-    )} && test -f ${quoteShell(`${stagingRoot}/start_recording.sh`)}`
+  const cleanupTargets = [stagingRoot, backupRoot];
+  const mkdirTargets = [];
+  for (const entry of syncEntries) {
+    cleanupTargets.push(entry.stagingPath, entry.backupPath, entry.legacyBackupPath);
+    mkdirTargets.push(path.posix.dirname(entry.backupPath), entry.targetParent);
+  }
+  await execInContainerAsRoot(
+    `rm -rf ${cleanupTargets.map((p) => quoteShell(p)).join(" ")} && mkdir -p ${mkdirTargets
+      .map((p) => quoteShell(p))
+      .join(" ")}`
   );
 
-  await manager.exec(
-    `if [ -d ${quoteShell(repoRootInContainer)} ]; then mv ${quoteShell(repoRootInContainer)} ${quoteShell(
-      backupRoot
-    )}; fi && mv ${quoteShell(stagingRoot)} ${quoteShell(repoRootInContainer)}`
+  for (const entry of syncEntries) {
+    const sourceSpec = entry.isDirectory ? `${entry.sourcePath}${path.sep}.` : entry.sourcePath;
+    await runLocalCommand("docker", ["cp", sourceSpec, `${containerName}:${entry.stagingPath}`]);
+    await manager.exec(`test ${entry.isDirectory ? "-d" : "-f"} ${quoteShell(entry.stagingPath)}`);
+  }
+
+  for (const entry of syncEntries) {
+    await execInContainerAsRoot(
+      `if [ -e ${quoteShell(entry.targetPath)} ]; then mv ${quoteShell(entry.targetPath)} ${quoteShell(
+        entry.backupPath
+      )}; fi && mv ${quoteShell(entry.stagingPath)} ${quoteShell(entry.targetPath)}`
+    );
+    await execInContainerAsRoot(`chown -R ${quoteShell(`${simUser}:${simUser}`)} ${quoteShell(entry.targetPath)}`);
+  }
+  const startupScripts = [
+    path.posix.join(repoRootInContainer, "start_drone.sh"),
+    path.posix.join(repoRootInContainer, "start_recording.sh"),
+    path.posix.join(repoRootInContainer, "start_mission_stack.sh"),
+    path.posix.join(repoRootInContainer, "start_ros.sh"),
+  ];
+  const normalizeScriptsPy =
+    "import pathlib, os, stat\n" +
+    `files = ${JSON.stringify(startupScripts)}\n` +
+    "for item in files:\n" +
+    "    p = pathlib.Path(item)\n" +
+    "    if not p.exists() or not p.is_file():\n" +
+    "        continue\n" +
+    "    data = p.read_bytes()\n" +
+    "    data = data.replace(b'\\r\\n', b'\\n').replace(b'\\r', b'\\n')\n" +
+    "    p.write_bytes(data)\n" +
+    "    mode = p.stat().st_mode\n" +
+    "    p.chmod(mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)\n";
+  await runLocalCommand("docker", ["exec", "-u", "root", containerName, "python3", "-c", normalizeScriptsPy]);
+  await execInContainerAsRoot(
+    `chown ${quoteShell(`${simUser}:${simUser}`)} ${startupScripts.map((p) => quoteShell(p)).join(" ")}`
   );
 
   try {
@@ -537,15 +665,15 @@ async function applyRepoToSimContainer(localRepoRoot) {
         " && colcon build --symlink-install"
     )}`;
     await manager.exec(buildCommand);
-    await manager.exec(`rm -rf ${quoteShell(backupRoot)}`);
+    await execInContainerAsRoot(`rm -rf ${syncEntries.map((entry) => quoteShell(entry.backupPath)).join(" ")}`);
   } catch (error) {
-    await manager
-      .exec(
-        `if [ -d ${quoteShell(backupRoot)} ]; then rm -rf ${quoteShell(repoRootInContainer)} && mv ${quoteShell(
-          backupRoot
-        )} ${quoteShell(repoRootInContainer)}; fi`
-      )
-      .catch(() => {});
+    for (const entry of syncEntries) {
+      await execInContainerAsRoot(
+        `if [ -e ${quoteShell(entry.backupPath)} ]; then rm -rf ${quoteShell(entry.targetPath)} && mv ${quoteShell(
+          entry.backupPath
+        )} ${quoteShell(entry.targetPath)}; fi`
+      ).catch(() => {});
+    }
     throw new Error(`colcon build failed after hotswap: ${error.message}`);
   }
 }
@@ -626,17 +754,16 @@ app.post("/sim/hotswap", async (req, res) => {
   };
 
   try {
-    annotate("Simulation hotswap requested.");
-    upload = await materializeUploadedRepo(req.body?.files, req.body?.sourceName);
+    const branch = typeof req.body?.branch === "string" ? req.body.branch : HOTSWAP_DEFAULT_BRANCH;
+    annotate(`Simulation hotswap requested (branch=${branch}).`);
+    upload = await materializeRepoFromBranch(branch);
     annotate(
-      `Prepared upload payload (${upload.fileCount} files, ${Math.round(upload.totalBytes / 1024)} KiB${
-        upload.sourceName ? `, source=${upload.sourceName}` : ""
-      }).`
+      `Fetched ${upload.sourceName} branch "${upload.branch}" (sparse paths: ${upload.syncRelativePaths.join(", ")}).`
     );
 
-    annotate("Applying selected repo snapshot into simulation container.");
-    await applyRepoToSimContainer(upload.repoRoot);
-    annotate("Repo synced and colcon build completed.");
+    annotate(`Applying scoped repo update (${upload.syncRelativePaths.join(", ")}) into simulation container.`);
+    await applyRepoToSimContainer(upload.repoRoot, upload.syncRelativePaths);
+    annotate(`Scoped repo sync (${upload.syncRelativePaths.join(", ")}) and colcon build completed.`);
 
     await resetSimulationStack(trace);
     const diagnostics = await collectSimDiagnostics();

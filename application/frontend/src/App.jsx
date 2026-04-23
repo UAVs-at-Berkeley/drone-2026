@@ -48,7 +48,6 @@ export default function App() {
   const [followLog, setFollowLog] = useState(true);
   const followLogRef = useRef(true);
   const tmuxPreRef = useRef(null);
-  const repoPickerRef = useRef(null);
   const [envRows, setEnvRows] = useState(null);
   const [envDraft, setEnvDraft] = useState({});
   const [envNotice, setEnvNotice] = useState("");
@@ -57,6 +56,7 @@ export default function App() {
   const [envSaveBusy, setEnvSaveBusy] = useState(false);
   const [simShutdownBusy, setSimShutdownBusy] = useState(false);
   const [hotswapBusy, setHotswapBusy] = useState(false);
+  const [hotswapPrepBusy, setHotswapPrepBusy] = useState(false);
   const [hotswapStatus, setHotswapStatus] = useState({ type: "idle", message: "" });
 
   useEffect(() => {
@@ -87,7 +87,8 @@ export default function App() {
   const canPassiveRecord = status.sshConnected && !status.inFlight && !busy;
   const canEndMission = status.sshConnected && status.inFlight && !busy;
   const simModeActive = (status.mode || connectionMode) === "sim";
-  const canHotswapRepo = simModeActive && status.sshConnected && !busy && !simShutdownBusy && !hotswapBusy;
+  const canHotswapRepo =
+    simModeActive && status.sshConnected && !busy && !simShutdownBusy && !hotswapBusy && !hotswapPrepBusy;
 
   const statusLabel = useMemo(() => {
     if (status.connectionState === "connected_idle") return "Connected";
@@ -127,81 +128,12 @@ export default function App() {
 
   const clampPct = (value) => Math.max(0, Math.min(100, Number(value) || 0));
 
-  const blockedUploadRoots = new Set([".git", "node_modules", "__pycache__", ".pytest_cache", ".mypy_cache"]);
-
-  function shouldSkipRepoPath(relativePath) {
-    const normalized = String(relativePath || "")
-      .replace(/\\/g, "/")
-      .replace(/^\/+/, "");
-    if (!normalized) {
-      return true;
+  function normalizeBranchInput(raw) {
+    const branch = String(raw || "").trim();
+    if (!branch) {
+      return "";
     }
-    const [firstSegment] = normalized.split("/");
-    return blockedUploadRoots.has(firstSegment);
-  }
-
-  function stripTopLevelDirectory(relativePath) {
-    const normalized = String(relativePath || "")
-      .replace(/\\/g, "/")
-      .replace(/^\/+/, "");
-    const parts = normalized.split("/").filter(Boolean);
-    if (parts.length <= 1) {
-      return normalized;
-    }
-    return parts.slice(1).join("/");
-  }
-
-  async function fileToUploadPayload(relativePath, file) {
-    const cleanPath = relativePath.replace(/\\/g, "/").replace(/^\/+/, "");
-    const bytes = new Uint8Array(await file.arrayBuffer());
-    let binary = "";
-    const chunkSize = 0x8000;
-    for (let i = 0; i < bytes.length; i += chunkSize) {
-      binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
-    }
-    return {
-      path: cleanPath,
-      contentBase64: btoa(binary),
-    };
-  }
-
-  async function collectFilesFromDirectoryHandle(rootHandle) {
-    const entries = [];
-
-    async function walkDirectory(dirHandle, prefix = "") {
-      for await (const [name, handle] of dirHandle.entries()) {
-        const nextRelative = prefix ? `${prefix}/${name}` : name;
-        if (handle.kind === "directory") {
-          if (shouldSkipRepoPath(nextRelative)) {
-            continue;
-          }
-          await walkDirectory(handle, nextRelative);
-          continue;
-        }
-        if (shouldSkipRepoPath(nextRelative)) {
-          continue;
-        }
-        const file = await handle.getFile();
-        entries.push(await fileToUploadPayload(nextRelative, file));
-      }
-    }
-
-    await walkDirectory(rootHandle);
-    return entries;
-  }
-
-  async function collectFilesFromInput(fileList) {
-    const files = Array.from(fileList || []);
-    const payload = [];
-    for (const file of files) {
-      const relRaw = file.webkitRelativePath || file.name;
-      const relPath = stripTopLevelDirectory(relRaw);
-      if (!relPath || shouldSkipRepoPath(relPath)) {
-        continue;
-      }
-      payload.push(await fileToUploadPayload(relPath, file));
-    }
-    return payload;
+    return branch;
   }
 
   const resolvedSimViewerUrl = useMemo(() => {
@@ -382,22 +314,23 @@ export default function App() {
     }
   }
 
-  async function runRepoHotswap(uploadFiles, sourceName) {
-    if (!uploadFiles.length) {
-      setInfo("No files selected. Pick a drone-2026 repo folder.");
-      setHotswapStatus({ type: "error", message: "No files selected." });
+  async function runRepoHotswap(branch) {
+    const normalizedBranch = normalizeBranchInput(branch);
+    if (!normalizedBranch) {
+      setInfo("Branch name is required.");
+      setHotswapStatus({ type: "error", message: "Branch name is required." });
       return;
     }
     setHotswapBusy(true);
-    setInfo("Uploading selected repo snapshot...");
-    setHotswapStatus({ type: "pending", message: "Upload in progress..." });
+    setInfo(`Fetching drone-2026 branch "${normalizedBranch}" and updating simulation...`);
+    setHotswapStatus({ type: "pending", message: `Updating from branch "${normalizedBranch}"...` });
     try {
-      const result = await api.hotswapSimulationCode({ files: uploadFiles, sourceName });
+      const result = await api.hotswapSimulationBranch({ branch: normalizedBranch });
       if (result?.state) {
         setStatus(result.state);
       }
-      setInfo("Repo hotswap complete. colcon build finished and simulation reset.");
-      setHotswapStatus({ type: "success", message: "Upload succeeded. Simulation reset complete." });
+      setInfo(`Repo hotswap complete from branch "${normalizedBranch}". Simulation reset complete.`);
+      setHotswapStatus({ type: "success", message: `Updated from "${normalizedBranch}".` });
       await refreshStatus();
     } catch (error) {
       if (error?.details?.state) {
@@ -411,34 +344,23 @@ export default function App() {
   }
 
   async function handleLoadUpdatedRepo() {
-    if (hotswapBusy || busy) {
+    if (hotswapBusy || hotswapPrepBusy || busy) {
       return;
     }
-    if (typeof window.showDirectoryPicker === "function") {
-      try {
-        const root = await window.showDirectoryPicker({ mode: "read" });
-        const files = await collectFilesFromDirectoryHandle(root);
-        await runRepoHotswap(files, root.name || "directory-picker");
+    setHotswapPrepBusy(true);
+    setInfo("Preparing branch update...");
+    setHotswapStatus({ type: "pending", message: "Choose a branch to load." });
+    try {
+      const branchInput = window.prompt("Enter branch to load from UAVs-at-Berkeley/drone-2026", "main");
+      if (branchInput == null) {
+        setInfo("Branch update canceled.");
+        setHotswapStatus({ type: "idle", message: "" });
         return;
-      } catch (error) {
-        if (error?.name === "AbortError") {
-          return;
-        }
       }
+      await runRepoHotswap(branchInput);
+    } finally {
+      setHotswapPrepBusy(false);
     }
-    repoPickerRef.current?.click();
-  }
-
-  async function handleRepoInputChange(event) {
-    const picked = event.target.files;
-    event.target.value = "";
-    if (!picked?.length) {
-      return;
-    }
-    const files = await collectFilesFromInput(picked);
-    const firstPath = picked[0]?.webkitRelativePath || "";
-    const sourceName = firstPath.split("/").filter(Boolean)[0] || "file-input-picker";
-    await runRepoHotswap(files, sourceName);
   }
 
   useEffect(() => {
@@ -692,7 +614,11 @@ export default function App() {
         {simModeActive ? (
           <>
             <button onClick={handleLoadUpdatedRepo} disabled={!canHotswapRepo} className="btn-secondary">
-              {hotswapBusy ? "Loading repo update..." : "Load Updated Repo"}
+              {hotswapBusy
+                ? "Loading repo update..."
+                : hotswapPrepBusy
+                  ? "Preparing branch update..."
+                  : "Load Repo Branch"}
             </button>
             {hotswapStatus.type !== "idle" ? (
               <span
@@ -705,15 +631,6 @@ export default function App() {
             ) : null}
           </>
         ) : null}
-        <input
-          ref={repoPickerRef}
-          type="file"
-          multiple
-          onChange={handleRepoInputChange}
-          style={{ display: "none" }}
-          webkitdirectory=""
-          directory=""
-        />
       </section>
 
       {status.sshConnected && (

@@ -64,8 +64,12 @@ COPY start_recording.sh /home/sim/drone_workspace/drone-2026/start_recording.sh
 COPY start_mission_stack.sh /home/sim/drone_workspace/drone-2026/start_mission_stack.sh
 COPY start_ros.sh /home/sim/drone_workspace/drone-2026/start_ros.sh
 COPY ros_workspace /home/sim/drone_workspace/drone-2026/ros_workspace
+COPY SITL/custom_assets /home/sim/drone_workspace/drone-2026/SITL/custom_assets
+COPY SITL/web-sim/spawn_random_target.sh /home/sim/drone_workspace/drone-2026/SITL/web-sim/spawn_random_target.sh
 RUN sed -i 's/\r$//' /home/sim/drone_workspace/drone-2026/start_*.sh && \
+    sed -i 's/\r$//' /home/sim/drone_workspace/drone-2026/SITL/web-sim/spawn_random_target.sh && \
     chmod +x /home/sim/drone_workspace/drone-2026/start_*.sh && \
+    chmod +x /home/sim/drone_workspace/drone-2026/SITL/web-sim/spawn_random_target.sh && \
     chown -R sim:sim /home/sim/drone_workspace
 
 USER sim
