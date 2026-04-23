@@ -64,6 +64,14 @@ export class DockerComposeService {
     return runCommand("docker", this.composeArgs(["down"]));
   }
 
+  async restart(serviceName = "sim") {
+    const sim = this.getSimConfig();
+    if (!sim.composeFile || !fs.existsSync(sim.composeFile)) {
+      throw new Error(`Simulation compose file not found: ${sim.composeFile}`);
+    }
+    return runCommand("docker", this.composeArgs(["restart", serviceName]));
+  }
+
   async ps() {
     const sim = this.getSimConfig();
     if (!sim.composeFile || !fs.existsSync(sim.composeFile)) {

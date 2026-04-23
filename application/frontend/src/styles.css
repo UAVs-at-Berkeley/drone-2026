@@ -34,6 +34,31 @@ body {
   margin-right: 0;
 }
 
+.hotswap-status {
+  font-size: 0.85rem;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+}
+
+.hotswap-status-pending {
+  color: #bfdbfe;
+  background: #1e3a8a;
+  border-color: #2563eb;
+}
+
+.hotswap-status-success {
+  color: #bbf7d0;
+  background: #14532d;
+  border-color: #22c55e;
+}
+
+.hotswap-status-error {
+  color: #fecaca;
+  background: #7f1d1d;
+  border-color: #ef4444;
+}
+
 .startup-progress {
   margin: 12px 0 10px;
 }

@@ -39,6 +39,12 @@ export const api = {
     }),
   startPassiveRecording: () => request("/flight/start-passive", { method: "POST" }),
   stopFlight: () => request("/flight/stop", { method: "POST" }),
+  resetSimulation: () => request("/sim/reset", { method: "POST" }),
+  hotswapSimulationCode: ({ files, sourceName = "" }) =>
+    request("/sim/hotswap", {
+      method: "POST",
+      body: JSON.stringify({ files, sourceName }),
+    }),
   shutdownSimulation: () => request("/sim/shutdown", { method: "POST" }),
   getSettingsEnv: () => request("/settings/env"),
   putSettingsEnv: (values) =>

@@ -1,5 +1,9 @@
 import express from "express";
 import cors from "cors";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { spawn } from "node:child_process";
 import { config, normalizeMode, reloadConfigFromDisk } from "./config.js";
 import { DroneSessionManager } from "./sshManager.js";
 import { validateMissionFilename, validateMissionYaml } from "./missionValidation.js";
@@ -11,6 +15,30 @@ import { estimateStartupProgress } from "./startupProgress.js";
 const app = express();
 const manager = new DroneSessionManager();
 const dockerCompose = new DockerComposeService(() => config.sim);
+const HOTSWAP_MAX_FILES = 20000;
+const HOTSWAP_MAX_TOTAL_BYTES = 150 * 1024 * 1024;
+
+function runLocalCommand(command, args) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"] });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk.toString();
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk.toString();
+    });
+    child.on("error", (error) => reject(error));
+    child.on("close", (code) => {
+      if (code === 0) {
+        resolve({ code, stdout, stderr });
+        return;
+      }
+      reject(new Error(stderr.trim() || stdout.trim() || `${command} failed (${code})`));
+    });
+  });
+}
 
 function nowStamp() {
   return new Date().toISOString();
@@ -60,7 +88,7 @@ function isRefusedError(error) {
 }
 
 app.use(cors());
-app.use(express.json({ limit: "1mb" }));
+app.use(express.json({ limit: "250mb" }));
 
 app.get("/health", (_req, res) => {
   res.json({ ok: true });
@@ -397,6 +425,242 @@ app.post("/sim/shutdown", async (_req, res) => {
     annotate(`Simulation shutdown failed: ${error.message}`);
     manager.setState({ connectTrace: trace });
     res.status(500).json({ error: error.message, state: manager.getState() });
+  }
+});
+
+function quoteShell(input) {
+  return `'${String(input).replace(/'/g, "'\\''")}'`;
+}
+
+function isSafeRelativeRepoPath(inputPath) {
+  if (typeof inputPath !== "string" || inputPath.length === 0) {
+    return false;
+  }
+  if (inputPath.includes("\0")) {
+    return false;
+  }
+  const normalized = inputPath.replace(/\\/g, "/").replace(/^\/+/, "");
+  if (!normalized || normalized.startsWith("../") || normalized.includes("/../") || normalized === "..") {
+    return false;
+  }
+  return true;
+}
+
+async function materializeUploadedRepo(files, sourceName = "") {
+  if (!Array.isArray(files) || files.length === 0) {
+    throw new Error("No files were provided from the selected repo.");
+  }
+  if (files.length > HOTSWAP_MAX_FILES) {
+    throw new Error(`Too many files provided (${files.length}). Max supported is ${HOTSWAP_MAX_FILES}.`);
+  }
+  const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "drone-hotswap-"));
+  const repoRoot = path.join(tmpRoot, "repo");
+  await fs.mkdir(repoRoot, { recursive: true });
+  let totalBytes = 0;
+
+  try {
+    for (const file of files) {
+      const relPathRaw = file?.path;
+      const contentBase64 = file?.contentBase64;
+      if (!isSafeRelativeRepoPath(relPathRaw)) {
+        throw new Error(`Invalid path in upload payload: ${String(relPathRaw)}`);
+      }
+      if (typeof contentBase64 !== "string") {
+        throw new Error(`File payload missing base64 content: ${String(relPathRaw)}`);
+      }
+      const relPath = relPathRaw.replace(/\\/g, "/").replace(/^\/+/, "");
+      const targetPath = path.join(repoRoot, relPath);
+      const parent = path.dirname(targetPath);
+      await fs.mkdir(parent, { recursive: true });
+      const bytes = Buffer.from(contentBase64, "base64");
+      totalBytes += bytes.length;
+      if (totalBytes > HOTSWAP_MAX_TOTAL_BYTES) {
+        throw new Error(
+          `Uploaded repo is too large (${Math.round(totalBytes / (1024 * 1024))} MB). Max is ${
+            HOTSWAP_MAX_TOTAL_BYTES / (1024 * 1024)
+          } MB.`
+        );
+      }
+      await fs.writeFile(targetPath, bytes);
+    }
+
+    const required = ["ros_workspace", "start_drone.sh", "start_recording.sh"];
+    for (const item of required) {
+      const full = path.join(repoRoot, item);
+      await fs.access(full);
+    }
+
+    return {
+      tmpRoot,
+      repoRoot,
+      sourceName: typeof sourceName === "string" ? sourceName : "",
+      fileCount: files.length,
+      totalBytes,
+    };
+  } catch (error) {
+    await fs.rm(tmpRoot, { recursive: true, force: true }).catch(() => {});
+    throw error;
+  }
+}
+
+async function applyRepoToSimContainer(localRepoRoot) {
+  await manager.setMode("sim");
+  await manager.connect({ mode: "sim" });
+
+  const modeCfg = config.sim;
+  const containerName = modeCfg.containerName || "drone-2026-sim";
+  const repoRootInContainer = path.posix.dirname(modeCfg.startScriptPath || "/home/sim/drone_workspace/drone-2026/start_drone.sh");
+  const stagingRoot = `${repoRootInContainer}.new`;
+  const backupRoot = `${repoRootInContainer}.prev`;
+  const rosWorkspace = `${repoRootInContainer}/ros_workspace`;
+
+  await manager.exec(`rm -rf ${quoteShell(stagingRoot)} ${quoteShell(backupRoot)} && mkdir -p ${quoteShell(stagingRoot)}`);
+  await runLocalCommand("docker", ["cp", `${localRepoRoot}${path.sep}.`, `${containerName}:${stagingRoot}`]);
+
+  await manager.exec(
+    `test -d ${quoteShell(`${stagingRoot}/ros_workspace`)} && test -f ${quoteShell(
+      `${stagingRoot}/start_drone.sh`
+    )} && test -f ${quoteShell(`${stagingRoot}/start_recording.sh`)}`
+  );
+
+  await manager.exec(
+    `if [ -d ${quoteShell(repoRootInContainer)} ]; then mv ${quoteShell(repoRootInContainer)} ${quoteShell(
+      backupRoot
+    )}; fi && mv ${quoteShell(stagingRoot)} ${quoteShell(repoRootInContainer)}`
+  );
+
+  try {
+    const buildCommand = `bash -lc ${quoteShell(
+      "source /opt/ros/jazzy/setup.bash && cd " +
+        rosWorkspace +
+        " && colcon build --symlink-install"
+    )}`;
+    await manager.exec(buildCommand);
+    await manager.exec(`rm -rf ${quoteShell(backupRoot)}`);
+  } catch (error) {
+    await manager
+      .exec(
+        `if [ -d ${quoteShell(backupRoot)} ]; then rm -rf ${quoteShell(repoRootInContainer)} && mv ${quoteShell(
+          backupRoot
+        )} ${quoteShell(repoRootInContainer)}; fi`
+      )
+      .catch(() => {});
+    throw new Error(`colcon build failed after hotswap: ${error.message}`);
+  }
+}
+
+async function resetSimulationStack(trace, { reconnectPassword = "" } = {}) {
+  const annotate = (message) => {
+    trace.push(`[${nowStamp()}] ${message}`);
+  };
+
+  await manager.setMode("sim");
+  const stateBefore = manager.getState();
+  if (stateBefore.inFlight) {
+    annotate("Stopping active mission tmux session before SITL reset.");
+    await manager.stopFlight();
+  }
+  annotate("Disconnecting from simulation session.");
+  await manager.disconnect().catch(() => {});
+  annotate("Restarting simulation service container.");
+  await dockerCompose.restart("sim");
+  annotate("Simulation service restarted; reconnecting backend session.");
+
+  const maxAttempts = 20;
+  const retryDelayMs = 1200;
+  let lastError = null;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      if (attempt > 1) {
+        annotate(`Reconnect retry ${attempt}/${maxAttempts}.`);
+      }
+      await manager.connect({ mode: "sim", password: reconnectPassword });
+      lastError = null;
+      break;
+    } catch (error) {
+      lastError = error;
+      if (!isTransientSimSshError(error) || attempt === maxAttempts) {
+        throw error;
+      }
+      await sleep(retryDelayMs);
+    }
+  }
+  if (lastError) {
+    throw lastError;
+  }
+  annotate("Simulation reset complete and session reconnected.");
+}
+
+app.post("/sim/reset", async (_req, res) => {
+  const trace = [];
+  try {
+    await resetSimulationStack(trace);
+    const diagnostics = await collectSimDiagnostics();
+    manager.setState({
+      connectTrace: trace,
+      composePs: diagnostics.composePs,
+      composeLogsTail: diagnostics.composeLogsTail,
+      mode: "sim",
+    });
+    res.json({ ok: true, state: manager.getState() });
+  } catch (error) {
+    trace.push(`[${nowStamp()}] Simulation reset failed: ${error.message}`);
+    const diagnostics = await collectSimDiagnostics();
+    manager.setState({
+      connectTrace: trace,
+      composePs: diagnostics.composePs,
+      composeLogsTail: diagnostics.composeLogsTail,
+      mode: "sim",
+      lastError: error.message,
+    });
+    res.status(500).json({ error: error.message, state: manager.getState() });
+  }
+});
+
+app.post("/sim/hotswap", async (req, res) => {
+  const trace = [];
+  let upload = null;
+  const annotate = (message) => {
+    trace.push(`[${nowStamp()}] ${message}`);
+  };
+
+  try {
+    annotate("Simulation hotswap requested.");
+    upload = await materializeUploadedRepo(req.body?.files, req.body?.sourceName);
+    annotate(
+      `Prepared upload payload (${upload.fileCount} files, ${Math.round(upload.totalBytes / 1024)} KiB${
+        upload.sourceName ? `, source=${upload.sourceName}` : ""
+      }).`
+    );
+
+    annotate("Applying selected repo snapshot into simulation container.");
+    await applyRepoToSimContainer(upload.repoRoot);
+    annotate("Repo synced and colcon build completed.");
+
+    await resetSimulationStack(trace);
+    const diagnostics = await collectSimDiagnostics();
+    manager.setState({
+      connectTrace: trace,
+      composePs: diagnostics.composePs,
+      composeLogsTail: diagnostics.composeLogsTail,
+      mode: "sim",
+    });
+    res.json({ ok: true, state: manager.getState() });
+  } catch (error) {
+    annotate(`Simulation hotswap failed: ${error.message}`);
+    const diagnostics = await collectSimDiagnostics();
+    manager.setState({
+      connectTrace: trace,
+      composePs: diagnostics.composePs,
+      composeLogsTail: diagnostics.composeLogsTail,
+      mode: "sim",
+      lastError: error.message,
+    });
+    res.status(500).json({ error: error.message, state: manager.getState() });
+  } finally {
+    if (upload?.tmpRoot) {
+      await fs.rm(upload.tmpRoot, { recursive: true, force: true }).catch(() => {});
+    }
   }
 });
 
