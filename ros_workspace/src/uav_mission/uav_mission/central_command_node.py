@@ -285,6 +285,8 @@ class CentralCommandNode(Node):
                         step_id=step_id,
                         step_index_override=completed_idx,
                     )
+                    # Trigger the next step immediately to minimize controller handoff gaps.
+                    self._poll_mission()
             elif status == GoalStatus.STATUS_CANCELED:
                 self._mission_failed = True
                 self.publish_status("error", "Step canceled: %s" % step_id, step_id=step_id)

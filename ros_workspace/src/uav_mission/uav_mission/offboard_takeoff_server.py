@@ -5,8 +5,9 @@ Offboard takeoff action server — MAVROS offboard prime, OFFBOARD mode, arm, cl
 Completes with success when ExtendedState reports IN_AIR and altitude is within
 takeoff_altitude_tolerance_m of the requested goal altitude. Does not land.
 
-After success this node stops publishing hold setpoints. If the vehicle remains in OFFBOARD,
-another node should publish to /mavros/setpoint_position/local promptly (e.g. waypoint mission).
+After reaching the goal altitude, this node briefly keeps publishing hold setpoints
+for handoff_hold_sec, then returns success. If the vehicle remains in OFFBOARD after
+that, another node should publish to /mavros/setpoint_position/local promptly.
 """
 
 import rclpy
@@ -29,12 +30,14 @@ REQUEST_INTERVAL_SEC = 5.0
 PRIME_COUNT = 100
 SETPOINT_PERIOD_SEC = 1.0 / SETPOINT_RATE_HZ
 DEFAULT_TAKEOFF_ALT_TOLERANCE_M = 0.25
+DEFAULT_HANDOFF_HOLD_SEC = 1.5
 
 
 class OffboardTakeoffServer(Node):
     def __init__(self):
         super().__init__("offboard_takeoff_server")
         self.declare_parameter("takeoff_altitude_tolerance_m", DEFAULT_TAKEOFF_ALT_TOLERANCE_M)
+        self.declare_parameter("handoff_hold_sec", DEFAULT_HANDOFF_HOLD_SEC)
         self._cb_group = ReentrantCallbackGroup()
 
         self._current_state = State()
@@ -236,6 +239,29 @@ class OffboardTakeoffServer(Node):
                         "Takeoff complete at altitude %.2f m (target %.2f m, tol %.2f m)."
                         % (self._current_altitude_m, altitude_m, tolerance_m)
                     )
+                    # Keep setpoints alive briefly while the mission controller hands off
+                    # to the next step, preventing OFFBOARD signal-loss failsafe.
+                    handoff_hold_sec = max(
+                        0.0,
+                        float(self.get_parameter("handoff_hold_sec").value),
+                    )
+                    if handoff_hold_sec > 0.0:
+                        publish_phase(
+                            "handoff",
+                            "Holding setpoints for %.2f s mission handoff" % handoff_hold_sec,
+                        )
+                        handoff_deadline = time.monotonic() + handoff_hold_sec
+                        while rclpy.ok() and time.monotonic() < handoff_deadline:
+                            if goal_handle.is_cancel_requested:
+                                result = OffboardTakeoff.Result()
+                                result.success = False
+                                result.message = "Cancelled"
+                                goal_handle.canceled()
+                                self.get_logger().info("Takeoff goal cancelled during handoff hold")
+                                return result
+                            self._publish_setpoint(altitude_m)
+                            time.sleep(SETPOINT_PERIOD_SEC)
+
                     publish_phase("airborne", "Reached target altitude")
                     result = OffboardTakeoff.Result()
                     result.success = True
