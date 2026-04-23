@@ -24,6 +24,13 @@ function buildProgress(setters) {
   return progress;
 }
 
+/**
+ * sitl_core pane after SSH connect: matches `make px4_sitl` (old), `cmake --build build/... -- gz_*` (SITL/web-sim/entrypoint.sh),
+ * Ninja build lines, and no-rebuild "Built target" runs.
+ */
+const SITL_CORE_BOOT_MILESTONE =
+  /make px4_sitl|cmake --build|ninja:|\[\d+\/\d+\]|building .*px4|g?z_x500|Built target gz_/i;
+
 /** Max new lines credited in one status poll (avoids huge jumps on tmux overlap miss). */
 const MAX_DELTA_LINES_PER_POLL = 400;
 
@@ -154,7 +161,7 @@ function simNextThreshold(floor, ctx) {
     { p: 15, ok: has(ctx.connectTraceText, /starting simulation compose stack/i) },
     { p: 30, ok: has(ctx.composeLogsText, /new xtigervnc server|server listening on .* port 2222/i) },
     { p: 40, ok: ctx.connected && ctx.mode === "sim" },
-    { p: 55, ok: has(ctx.simBootLogText, /make px4_sitl|ninja:|building .*px4|g?z_x500/i) },
+    { p: 55, ok: has(ctx.simBootLogText, SITL_CORE_BOOT_MILESTONE) },
     { p: 68, ok: has(ctx.simBootLogText, /gazebo world is ready|waiting for gazebo world/i) },
     { p: 82, ok: has(ctx.simBootLogText, /spawning gazebo model|world:\s*default,\s*model:\s*x500_0/i) },
     { p: 92, ok: has(ctx.simGuiLogText, /x500_0 detected in \/world\/default\/pose\/info/i) },
@@ -276,7 +283,7 @@ export function estimateStartupProgress({
     [has(connectTraceText, /starting simulation compose stack/i), [15, "Starting container", "Launching simulation Docker service."]],
     [has(composeLogsText, /new xtigervnc server|server listening on .* port 2222/i), [30, "Container services", "VNC and SSH services are up."]],
     [connected && mode === "sim", [40, "SSH connected", "Backend connected to simulation runtime."]],
-    [has(simBootLogText, /make px4_sitl|ninja:|building .*px4|g?z_x500/i), [55, "PX4 building", "Compiling/starting PX4 SITL."]],
+    [has(simBootLogText, SITL_CORE_BOOT_MILESTONE), [55, "PX4 building", "Compiling/starting PX4 SITL."]],
     [has(simBootLogText, /gazebo world is ready|waiting for gazebo world/i), [68, "Gazebo server", "Gazebo world/server startup in progress."]],
     [has(simBootLogText, /spawning gazebo model|world:\s*default,\s*model:\s*x500_0/i), [82, "Model spawn", "Spawning x500 model into Gazebo world."]],
     [has(simGuiLogText, /x500_0 detected in \/world\/default\/pose\/info/i), [92, "GUI sync", "x500 detected; starting Gazebo GUI client."]],

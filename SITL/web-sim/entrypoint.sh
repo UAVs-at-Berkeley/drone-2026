@@ -33,7 +33,10 @@ if su - "$SIM_USER" -c "tmux has-session -t ${SITL_SESSION}" >/dev/null 2>&1; th
   su - "$SIM_USER" -c "tmux kill-session -t ${SITL_SESSION}" || true
 fi
 # Run PX4 + Gazebo server headless in one tmux session.
-su - "$SIM_USER" -c "tmux new-session -d -s ${SITL_SESSION} 'export DISPLAY=${VNC_DISPLAY} LIBGL_ALWAYS_SOFTWARE=${LIBGL_ALWAYS_SOFTWARE} PX4_GZ_SIM_RENDER_ENGINE=${PX4_GZ_SIM_RENDER_ENGINE} GZ_PARTITION=${GZ_PARTITION}; cd /PX4-Autopilot && HEADLESS=1 make px4_sitl ${SITL_MAKE_TARGET}'"
+# With PX4 pre-compiled in the image (Dockerfile `make px4_sitl` — build only, no gz_* run), invoke only the
+# Ninja sim target (same as `make px4_sitl <target>`) — avoids a full `make`/`px4_sitl` pass at startup.
+SITL_BUILD_DIR="${SITL_BUILD_DIR:-build/px4_sitl_default}"
+su - "$SIM_USER" -c "tmux new-session -d -s ${SITL_SESSION} 'export DISPLAY=${VNC_DISPLAY} LIBGL_ALWAYS_SOFTWARE=${LIBGL_ALWAYS_SOFTWARE} PX4_GZ_SIM_RENDER_ENGINE=${PX4_GZ_SIM_RENDER_ENGINE} GZ_PARTITION=${GZ_PARTITION} HEADLESS=1 && cd /PX4-Autopilot && cmake --build ${SITL_BUILD_DIR} -- ${SITL_MAKE_TARGET}'"
 
 if su - "$SIM_USER" -c "tmux has-session -t ${GCS_LINK_SESSION}" >/dev/null 2>&1; then
   su - "$SIM_USER" -c "tmux kill-session -t ${GCS_LINK_SESSION}" || true

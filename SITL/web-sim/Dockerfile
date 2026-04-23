@@ -45,6 +45,10 @@ RUN git clone https://github.com/PX4/PX4-Autopilot.git --recursive /PX4-Autopilo
     bash /PX4-Autopilot/Tools/setup/ubuntu.sh && \
     chown -R sim:sim /PX4-Autopilot
 
+# Pre-compile PX4 SITL firmware only. Do NOT add gz_x500 here — that is a run target
+# (launches the sim and will hang `docker build` forever). Runtime runs `cmake --build … -- gz_x500` in entrypoint.
+RUN su - sim -c "cd /PX4-Autopilot && make px4_sitl"
+
 # MAVROS for bridge between PX4 SITL and ROS
 RUN apt-get update && apt-get install -y \
     ros-jazzy-mavros \
