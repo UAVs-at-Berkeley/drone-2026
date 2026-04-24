@@ -38,6 +38,7 @@ const MAX_DELTA_LINES_PER_POLL = 400;
  * Soft caps: expected order-of-magnitude newlines between regex milestones (intra-segment fill).
  * sitl_core has no repo-owned [tag] spam; use raw line deltas (see SITL/web-sim/entrypoint.sh for [gui]/[gcs] only in other sessions).
  * sitl_gui: three echo templates per loop — [gui] waiting / detected / gz gui exited (entrypoint GUI_WAIT_SCRIPT).
+ * sitl_rviz_gui: [rviz-gui] wait / start lines (merged into simGuiLogText in server.js for progress + smoothing).
  */
 export const SIM_SEGMENT_LINE_CAPS = {
   /** floor < 8 */
@@ -166,6 +167,10 @@ function simNextThreshold(floor, ctx) {
     { p: 82, ok: has(ctx.simBootLogText, /spawning gazebo model|world:\s*default,\s*model:\s*x500_0/i) },
     { p: 92, ok: has(ctx.simGuiLogText, /x500_0 detected in \/world\/default\/pose\/info/i) },
     {
+      p: 96,
+      ok: has(ctx.simGuiLogText, /\[rviz-gui\].*starting RViz|starting RViz \(\/image_data\)/i),
+    },
+    {
       p: 100,
       ok:
         has(ctx.simGuiLogText, /starting gz gui|gz gui exited; restarting/i) ||
@@ -287,6 +292,10 @@ export function estimateStartupProgress({
     [has(simBootLogText, /gazebo world is ready|waiting for gazebo world/i), [68, "Gazebo server", "Gazebo world/server startup in progress."]],
     [has(simBootLogText, /spawning gazebo model|world:\s*default,\s*model:\s*x500_0/i), [82, "Model spawn", "Spawning x500 model into Gazebo world."]],
     [has(simGuiLogText, /x500_0 detected in \/world\/default\/pose\/info/i), [92, "GUI sync", "x500 detected; starting Gazebo GUI client."]],
+    [
+      has(simGuiLogText, /\[rviz-gui\].*starting RViz|starting RViz \(\/image_data\)/i),
+      [96, "RViz camera", "RViz opening with /image_data view (VNC desktop)."],
+    ],
     [
       has(simGuiLogText, /starting gz gui|gz gui exited; restarting/i) || has(simBootLogText, /startup script returned successfully/i),
       [100, "Sim setup complete", "SITL + Gazebo GUI ready.", true],

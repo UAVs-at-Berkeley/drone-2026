@@ -1,0 +1,25 @@
+.git
+.cursor
+.vscode
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/.DS_Store
+
+# Local runtime artifacts
+bags/
+**/logs/
+**/log/
+**/tmp/
+
+# ROS/colcon build outputs
+ros_workspace/build/
+ros_workspace/install/
+ros_workspace/log/
+
+# Python virtualenvs / node modules
+**/.venv/
+**/venv/
+**/node_modules/
+
+# Keep this repo's Docker context focused on source + scripts.

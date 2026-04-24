@@ -50,7 +50,7 @@ export const DEFAULT_ENV_STRINGS = {
   SIM_DRONE_TMUX_CAPTURE_LINES: "2500",
   SIM_DRONE_TMUX_STOP_GRACE_SECONDS: "20",
   SIM_MAVROS_FCU_URL: "udp://:14540@",
-  SIM_DRONE_MISSION_EXTRA_ARGS: "use_sim_time:=true include_camera:=false",
+  SIM_DRONE_MISSION_EXTRA_ARGS: "include_camera:=true camera_backend:=sim",
   SIM_NOVNC_ORIGIN: "http://127.0.0.1:6080/vnc.html?autoconnect=1&resize=scale&path=websockify",
   SIM_AUTOSTOP_ON_DISCONNECT: "0",
   RECONNECT_BACKOFF_MS: "3000",

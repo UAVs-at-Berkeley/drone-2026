@@ -253,7 +253,10 @@ app.get("/drone/status", async (_req, res) => {
         const simBootLog = await manager.captureTmuxPaneForSession(startupSession, 2000).catch(() => ({ text: "" }));
         simBootLogText = simBootLog.text || "";
         const simGuiLog = await manager.captureTmuxPaneForSession("sitl_gui", 1000).catch(() => ({ text: "" }));
-        simGuiLogText = simGuiLog.text || "";
+        const simRvizLog = await manager
+          .captureTmuxPaneForSession("sitl_rviz_gui", 800)
+          .catch(() => ({ text: "" }));
+        simGuiLogText = [simGuiLog.text, simRvizLog.text].filter(Boolean).join("\n");
       }
     }
     const { simSetupProgress, missionStartupProgress } = estimateStartupProgress({

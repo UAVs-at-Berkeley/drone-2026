@@ -7,6 +7,8 @@ This folder is the source-controlled home for custom Gazebo models used by the w
 - `models/custom_target/model.config`
 - `models/custom_target/model.sdf`
 - `models/custom_target/meshes/` (put your Blender export here, for example `target.obj`)
+- `models/sim_gimbal_camera/model.config`
+- `models/sim_gimbal_camera/model.sdf` (camera body + Gazebo camera sensor used by sim backend)
 
 ## Replacing starter geometry with your Blender mesh
 
@@ -33,3 +35,9 @@ Configure with environment variables in `SITL/web-sim/docker-compose.yml`:
 - `TARGET_MIN_RADIUS_M` (min radius from origin in meters)
 - `TARGET_Z_M` (spawn height in meters)
 - `TARGET_RANDOM_YAW` (`1` random yaw, `0` fixed yaw)
+
+## Sim gimbal camera model
+
+The web SITL startup can also spawn `sim_gimbal_camera` automatically. The ROS `camera_node`
+sim backend tracks the drone position and uses Gazebo `set_pose` to keep this camera model mounted
+to the aircraft while holding commanded gimbal orientation until a new `/camera/move` goal arrives.
