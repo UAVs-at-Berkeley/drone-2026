@@ -9,7 +9,7 @@ Object Localization Node - autonomous object-localization mission.
 import rclpy
 from rclpy.node import Node
 from rclpy.action import ActionServer
-
+# from uav_msgs.msg import DetectionArray
 from uav_msgs.action import StartObjectLocalization
 
 
@@ -28,6 +28,17 @@ class ObjectLocalizationNode(Node):
             "ObjectLocalizationNode started. Waiting for StartObjectLocalization "
             "goals on /object_localization/start."
         )
+
+        # self._central_detections_sub = self.create_subscription(
+        #     DetectionArray,
+        #     "/perception/detections",
+        #     self._central_detections_callback,
+        #     10,
+        # )
+        # self._latest_central_detections = None
+
+    # def _central_detections_callback(self, msg: DetectionArray):
+    #     self._latest_central_detections = msg
 
     def _execute_callback(self, goal_handle):
         """Handle StartObjectLocalization goal: placeholder autonomous routine."""
