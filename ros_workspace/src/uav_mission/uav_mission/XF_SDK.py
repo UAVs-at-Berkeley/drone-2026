@@ -526,38 +526,50 @@ class GimbalCamera:
         """Lazy-init RTSP VideoCapture. Returns None if opencv unavailable, closed, or open fails."""
         if not _CV2_AVAILABLE or self._closed:
             return None
+        stale_cap = None
         with self._lock:
-            if self._video_cap is not None:
-                if self._video_cap.isOpened():
-                    return self._video_cap
-                try:
-                    self._video_cap.release()
-                except Exception:
-                    pass
-                self._video_cap = None
-            url = "rtsp://%s:%d" % (self.ip, self.RTSP_PORT)
-            cap = cv2.VideoCapture()
-            for prop, val in [(getattr(cv2, "CAP_PROP_OPEN_TIMEOUT_MSEC", 170), 10000),
-                              (getattr(cv2, "CAP_PROP_READ_TIMEOUT_MSEC", 171), 5000)]:
-                try:
-                    cap.set(prop, val)
-                except Exception:
-                    pass
-            try:
-                opened = cap.open(url, getattr(cv2, "CAP_FFMPEG", 1900))
-            except Exception:
-                opened = cap.open(url)
-            if opened and cap.isOpened():
-                try:
-                    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-                except Exception:
-                    pass
-                self._video_cap = cap
+            if self._video_cap is not None and self._video_cap.isOpened():
                 return self._video_cap
+            stale_cap = self._video_cap
+            self._video_cap = None
+        if stale_cap is not None:
             try:
-                cap.release()
+                stale_cap.release()
             except Exception:
                 pass
+        url = "rtsp://%s:%d" % (self.ip, self.RTSP_PORT)
+        cap = cv2.VideoCapture()
+        for prop, val in [(getattr(cv2, "CAP_PROP_OPEN_TIMEOUT_MSEC", 170), 10000),
+                          (getattr(cv2, "CAP_PROP_READ_TIMEOUT_MSEC", 171), 5000)]:
+            try:
+                cap.set(prop, val)
+            except Exception:
+                pass
+        try:
+            opened = cap.open(url, getattr(cv2, "CAP_FFMPEG", 1900))
+        except Exception:
+            opened = cap.open(url)
+        if opened and cap.isOpened():
+            try:
+                cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+            except Exception:
+                pass
+            with self._lock:
+                if self._closed:
+                    try:
+                        cap.release()
+                    except Exception:
+                        pass
+                    return None
+                # Keep whichever opened capture is currently active.
+                if self._video_cap is None:
+                    self._video_cap = cap
+                    return self._video_cap
+                return self._video_cap
+        try:
+            cap.release()
+        except Exception:
+            pass
         return None
 
     def _reset_video_cap(self) -> None:
