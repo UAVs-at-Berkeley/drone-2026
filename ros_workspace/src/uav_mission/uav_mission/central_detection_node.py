@@ -11,6 +11,8 @@ Central Detection Node - shared perception pipeline.
 
 import rclpy
 from rclpy.node import Node
+from rclpy.executors import MultiThreadedExecutor
+from rclpy.callback_groups import MutuallyExclusiveCallbackGroup, ReentrantCallbackGroup
 from sensor_msgs.msg import Image, NavSatFix
 from std_msgs.msg import Float64
 from uav_msgs.msg import GimbalStatus, DetectionArray, Detection
@@ -136,13 +138,19 @@ class CentralDetectionNode(Node):
         self.declare_parameter("model_weights", "yolosegweights.pt")
         self._model = YOLO(self.get_parameter("model_weights").value)
         self._bridge = CvBridge()
+        self._busy = False
 
-        # Subscribe to raw camera (adjust topic name to your setup)
+        # Image inference runs exclusively; state callbacks run concurrently with it.
+        self._inference_group = MutuallyExclusiveCallbackGroup()
+        self._state_group = ReentrantCallbackGroup()
+
+        # Queue depth 1: only the latest unprocessed frame is kept.
         self._image_sub = self.create_subscription(
             Image,
             "/image_data",
             self._image_callback,
-            10,
+            1,
+            callback_group=self._inference_group,
         )
 
         self._gimbal_sub = self.create_subscription(
@@ -150,6 +158,7 @@ class CentralDetectionNode(Node):
             "/gimbal_status",
             self._gimbal_callback,
             10,
+            callback_group=self._state_group,
         )
 
         self._gps = None
@@ -158,6 +167,7 @@ class CentralDetectionNode(Node):
             "/mavros/global_position/global",
             self._gps_callback,
             10,
+            callback_group=self._state_group,
         )
 
         self._heading_deg = 0.0
@@ -166,6 +176,7 @@ class CentralDetectionNode(Node):
             "/mavros/global_position/compass_hdg",
             self._heading_callback,
             10,
+            callback_group=self._state_group,
         )
 
         # Publish generic detections for all mission nodes
@@ -202,55 +213,61 @@ class CentralDetectionNode(Node):
         return det
 
     def _image_callback(self, msg: Image):
-        try:
-            frame = self._bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
-        except Exception as e:
-            self.get_logger().warn("Image conversion failed: %s" % e)
+        if self._busy:
             return
+        self._busy = True
+        try:
+            try:
+                frame = self._bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
+            except Exception as e:
+                self.get_logger().warn("Image conversion failed: %s" % e)
+                return
 
-        results = self._model.predict(frame, verbose=False)
+            results = self._model.predict(frame, verbose=False)
 
-        det_array = DetectionArray()
-        det_array.header = msg.header
+            det_array = DetectionArray()
+            det_array.header = msg.header
 
-        for result in results:
-            if result.masks is None:
-                continue
-            for i, contour_xy in enumerate(result.masks.xy):
-                type_name = result.names[int(result.boxes.cls[i])]
-                side_m = SIDE_LENGTH_M.get(type_name)
-                if side_m is None:
+            for result in results:
+                if result.masks is None:
                     continue
-                sat_contour = contour_from_saturation(frame, result.boxes.xyxy[i])
-                active_contour = sat_contour if sat_contour is not None else np.array(contour_xy, dtype=np.float32)
+                for i, contour_xy in enumerate(result.masks.xy):
+                    type_name = result.names[int(result.boxes.cls[i])]
+                    side_m = SIDE_LENGTH_M.get(type_name)
+                    if side_m is None:
+                        continue
+                    sat_contour = contour_from_saturation(frame, result.boxes.xyxy[i])
+                    active_contour = sat_contour if sat_contour is not None else np.array(contour_xy, dtype=np.float32)
 
-                corners = corners_from_contour(active_contour)
-                if corners is None:
-                    continue
+                    corners = corners_from_contour(active_contour)
+                    if corners is None:
+                        continue
 
-                success, rmat, tvec = CentralDetectionNode.locate_square(corners, side_m)
-                if not success:
-                    continue
+                    success, rmat, tvec = CentralDetectionNode.locate_square(corners, side_m)
+                    if not success:
+                        continue
 
-                pose = self.square_world_pose(rmat, tvec)
-                if pose is None:
-                    continue
+                    pose = self.square_world_pose(rmat, tvec)
+                    if pose is None:
+                        continue
 
-                lat, lon, yaw, tvec_ned = pose
+                    lat, lon, yaw, tvec_ned = pose
 
-                det = Detection()
-                det.type = type_name
-                det.latitude = lat
-                det.longitude = lon
-                det.rotation = yaw
-                det.confidence = float(result.boxes.conf[i])
-                det.position.x = float(tvec_ned[0])
-                det.position.y = float(tvec_ned[1])
-                det.position.z = float(tvec_ned[2])
-                det_array.detections.append(det)
+                    det = Detection()
+                    det.type = type_name
+                    det.latitude = lat
+                    det.longitude = lon
+                    det.rotation = yaw
+                    det.confidence = float(result.boxes.conf[i])
+                    det.position.x = float(tvec_ned[0])
+                    det.position.y = float(tvec_ned[1])
+                    det.position.z = float(tvec_ned[2])
+                    det_array.detections.append(det)
 
-        if det_array.detections:
-            self._detections_pub.publish(det_array)
+            if det_array.detections:
+                self._detections_pub.publish(det_array)
+        finally:
+            self._busy = False
 
     def _gimbal_callback(self, msg: GimbalStatus):
         global cam_rot_mat
@@ -301,9 +318,9 @@ class CentralDetectionNode(Node):
                             )
 
         rmat, _ = cv.Rodrigues(rvec) # solvepnp returns a rotation vector, not a matrix
-        rmat = cam_rot_mat @ rmat
-
-        tvec = cam_rot_mat @ tvec
+        rot = cam_rot_mat  # snapshot once so both multiplies use the same matrix
+        rmat = rot @ rmat
+        tvec = rot @ tvec
 
         return success, rmat, tvec
 
@@ -355,8 +372,10 @@ class CentralDetectionNode(Node):
 def main(args=None):
     rclpy.init(args=args)
     node = CentralDetectionNode()
+    executor = MultiThreadedExecutor()
+    executor.add_node(node)
     try:
-        rclpy.spin(node)
+        executor.spin()
     except KeyboardInterrupt:
         pass
     finally:
