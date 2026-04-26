@@ -47,6 +47,7 @@ setup(
             "mapping_node = uav_mission.mapping_node:main",
             "detection_node = uav_mission.detection_node:main",
             "camera_node = uav_mission.camera_node:main",
+            "gimbal_pitch_sweep = uav_mission.gimbal_pitch_sweep_node:main",
             "waypoint_node = uav_mission.waypoint_node:main",
             "time_trial_node = uav_mission.time_trial_node:main",
             "object_localization_node = uav_mission.object_localization_node:main",

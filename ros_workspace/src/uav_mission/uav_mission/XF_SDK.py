@@ -478,6 +478,9 @@ class GimbalCamera:
         self._lock = threading.RLock()
         self.most_recent_feedback: Optional[ResponsePacket] = None
         self._video_cap = None
+        self._rtsp_read_fail_count = 0
+        self._rtsp_reopen_after_failures = 8
+        self._rtsp_last_reopen_log_time = 0.0
         self._closed = False
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         local_port = (bind_port if bind_port is not None else port + 1)
@@ -495,10 +498,12 @@ class GimbalCamera:
             self.sock.sendto(pkt.hex_bytes, (self.ip, self.port))
             data = self.sock.recv(256)
         except socket.timeout:
-            self._log.warn("OSD-off command: no response from %s (overlay may stay on)", self.ip)
+            self._log.warn(
+                "OSD-off command: no response from %s (overlay may stay on)" % (self.ip,)
+            )
             return
         except OSError as e:
-            self._log.warn("OSD-off command error: %s", e)
+            self._log.warn("OSD-off command error: %s" % (e,))
             return
         response = ResponsePacket(raw_bytes=data)
         if response.is_valid():
@@ -552,6 +557,15 @@ class GimbalCamera:
                 pass
         return None
 
+    def _reset_video_cap(self) -> None:
+        with self._lock:
+            if self._video_cap is not None:
+                try:
+                    self._video_cap.release()
+                except Exception:
+                    pass
+                self._video_cap = None
+
     def command_new_position(
         self, yaw_deg: float = 0, pitch_deg: float = 0, roll_deg: float = 0
     ) -> Optional[ResponsePacket]:
@@ -570,10 +584,10 @@ class GimbalCamera:
             self.sock.sendto(packet.hex_bytes, (self.ip, self.port))
             data = self.sock.recv(256)
         except socket.timeout:
-            self._log.warn("Gimbal command timeout (no response from %s)", self.ip)
+            self._log.warn("Gimbal command timeout (no response from %s)" % (self.ip,))
             return None
         except OSError as e:
-            self._log.warn("Gimbal command error: %s", e)
+            self._log.warn("Gimbal command error: %s" % (e,))
             return None
         response = ResponsePacket(raw_bytes=data)
         if response.is_valid():
@@ -599,7 +613,24 @@ class GimbalCamera:
             return None
         ret, frame = cap.read()
         if not ret or frame is None:
+            with self._lock:
+                self._rtsp_read_fail_count += 1
+                fail_count = self._rtsp_read_fail_count
+            if fail_count >= self._rtsp_reopen_after_failures:
+                now = time.time()
+                # Throttle this warning to avoid log spam when link is unhealthy.
+                if now - self._rtsp_last_reopen_log_time >= 2.0:
+                    self._log.warn(
+                        "RTSP read failed %d times; reopening capture at rtsp://%s:%d"
+                        % (fail_count, self.ip, self.RTSP_PORT)
+                    )
+                    self._rtsp_last_reopen_log_time = now
+                self._reset_video_cap()
+                with self._lock:
+                    self._rtsp_read_fail_count = 0
             return None
+        with self._lock:
+            self._rtsp_read_fail_count = 0
         return frame
 
     def close(self) -> None:
