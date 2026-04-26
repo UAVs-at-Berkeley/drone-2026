@@ -478,6 +478,9 @@ class GimbalCamera:
         self._lock = threading.RLock()
         self.most_recent_feedback: Optional[ResponsePacket] = None
         self._video_cap = None
+        self._latest_frame = None
+        self._frame_reader_thread = None
+        self._frame_reader_stop = threading.Event()
         self._rtsp_read_fail_count = 0
         self._rtsp_reopen_after_failures = 8
         self._rtsp_last_reopen_log_time = 0.0
@@ -566,6 +569,49 @@ class GimbalCamera:
                     pass
                 self._video_cap = None
 
+    def _ensure_frame_reader(self) -> None:
+        if not _CV2_AVAILABLE or self._closed:
+            return
+        with self._lock:
+            if self._frame_reader_thread is not None and self._frame_reader_thread.is_alive():
+                return
+            self._frame_reader_stop.clear()
+            self._frame_reader_thread = threading.Thread(
+                target=self._frame_reader_loop,
+                daemon=True,
+                name="gimbal_rtsp_reader",
+            )
+            self._frame_reader_thread.start()
+
+    def _frame_reader_loop(self) -> None:
+        while not self._frame_reader_stop.is_set() and not self._closed:
+            cap = self._get_video_cap()
+            if cap is None:
+                self._frame_reader_stop.wait(0.2)
+                continue
+            ret, frame = cap.read()
+            if not ret or frame is None:
+                with self._lock:
+                    self._rtsp_read_fail_count += 1
+                    fail_count = self._rtsp_read_fail_count
+                if fail_count >= self._rtsp_reopen_after_failures:
+                    now = time.time()
+                    # Throttle this warning to avoid log spam when link is unhealthy.
+                    if now - self._rtsp_last_reopen_log_time >= 2.0:
+                        self._log.warn(
+                            "RTSP read failed %d times; reopening capture at rtsp://%s:%d"
+                            % (fail_count, self.ip, self.RTSP_PORT)
+                        )
+                        self._rtsp_last_reopen_log_time = now
+                    self._reset_video_cap()
+                    with self._lock:
+                        self._rtsp_read_fail_count = 0
+                self._frame_reader_stop.wait(0.02)
+                continue
+            with self._lock:
+                self._latest_frame = frame
+                self._rtsp_read_fail_count = 0
+
     def command_new_position(
         self, yaw_deg: float = 0, pitch_deg: float = 0, roll_deg: float = 0
     ) -> Optional[ResponsePacket]:
@@ -608,34 +654,18 @@ class GimbalCamera:
         Returns:
             BGR image (height, width, 3), or None if unavailable.
         """
-        cap = self._get_video_cap()
-        if cap is None:
-            return None
-        ret, frame = cap.read()
-        if not ret or frame is None:
-            with self._lock:
-                self._rtsp_read_fail_count += 1
-                fail_count = self._rtsp_read_fail_count
-            if fail_count >= self._rtsp_reopen_after_failures:
-                now = time.time()
-                # Throttle this warning to avoid log spam when link is unhealthy.
-                if now - self._rtsp_last_reopen_log_time >= 2.0:
-                    self._log.warn(
-                        "RTSP read failed %d times; reopening capture at rtsp://%s:%d"
-                        % (fail_count, self.ip, self.RTSP_PORT)
-                    )
-                    self._rtsp_last_reopen_log_time = now
-                self._reset_video_cap()
-                with self._lock:
-                    self._rtsp_read_fail_count = 0
-            return None
+        self._ensure_frame_reader()
         with self._lock:
-            self._rtsp_read_fail_count = 0
-        return frame
+            if self._latest_frame is None:
+                return None
+            return self._latest_frame.copy()
 
     def close(self) -> None:
         """Release socket and video capture. Idempotent."""
         self._closed = True
+        self._frame_reader_stop.set()
+        if self._frame_reader_thread is not None and self._frame_reader_thread.is_alive():
+            self._frame_reader_thread.join(timeout=1.0)
         with self._lock:
             if self._video_cap is not None:
                 try:
@@ -643,6 +673,7 @@ class GimbalCamera:
                 except Exception:
                     pass
                 self._video_cap = None
+            self._latest_frame = None
             try:
                 self.sock.close()
             except Exception:
