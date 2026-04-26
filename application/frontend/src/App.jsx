@@ -1,7 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "./api";
 
-const defaultMission = `mission:
+const fallbackMission = `environment:
+  Geofence:
+    points:
+      - [37.0, -122.0, 30.0]
+  waypoints:
+    points:
+      - [37.0, -122.0, 30.0]
+  red_target: [37.0, -122.0, 30.0]
+  x_target: [37.0, -122.0, 30.0]
+  number_target: [37.0, -122.0, 30.0]
+mission:
   steps:
     - takeoff
     - time_trial
@@ -35,7 +45,7 @@ export default function App() {
     },
   });
   const [missionName, setMissionName] = useState("mission_ui.yaml");
-  const [missionYaml, setMissionYaml] = useState(defaultMission);
+  const [missionYaml, setMissionYaml] = useState(fallbackMission);
   const [savedMissionPath, setSavedMissionPath] = useState("");
   const [info, setInfo] = useState("");
   const [busy, setBusy] = useState(false);
@@ -73,6 +83,22 @@ export default function App() {
         setSshPassword(physical);
       })
       .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .defaultMission()
+      .then((data) => {
+        if (cancelled) return;
+        if (typeof data?.yamlText === "string" && data.yamlText.trim()) {
+          setMissionYaml(data.yamlText);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -549,8 +575,8 @@ export default function App() {
       ) : null}
 
       {simModeActive ? (
-        <section className="panel">
-          <h2>Simulation connection diagnostics</h2>
+        <details className="panel">
+          <summary>Simulation connection diagnostics</summary>
           <p className="tmux-log-hint">
             Last connect attempt trace, compose status, and recent compose logs for debugging startup failures.
           </p>
@@ -581,7 +607,7 @@ export default function App() {
               <pre className="tmux-log">{status.composeLogsTail}</pre>
             </>
           ) : null}
-        </section>
+        </details>
       ) : null}
 
       <section className="panel">

@@ -104,6 +104,17 @@ app.get("/health", (_req, res) => {
   res.json({ ok: true });
 });
 
+app.get("/mission/default", async (_req, res) => {
+  try {
+    const repoRoot = path.resolve(process.cwd(), "..", "..");
+    const missionPath = path.join(repoRoot, "ros_workspace", "src", "uav_mission", "missions", "example_mission.yaml");
+    const yamlText = await fs.readFile(missionPath, "utf8");
+    res.json({ yamlText });
+  } catch (error) {
+    res.status(500).json({ error: `Could not read default mission YAML: ${error.message}` });
+  }
+});
+
 /** Exposes DRONE_SSH_PASSWORD from .env for UI autofill only; use on trusted localhost. */
 app.get("/drone/prefill", (_req, res) => {
   res.json({

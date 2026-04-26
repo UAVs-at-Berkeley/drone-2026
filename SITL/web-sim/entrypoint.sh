@@ -21,11 +21,16 @@ VNC_DISPLAY="${VNC_DISPLAY:-:0}"
 # See: https://docs.px4.io/main/en/sim_gazebo_gz/ (PX4_GZ_SIM_RENDER_ENGINE).
 LIBGL_ALWAYS_SOFTWARE="${LIBGL_ALWAYS_SOFTWARE:-1}"
 PX4_GZ_SIM_RENDER_ENGINE="${PX4_GZ_SIM_RENDER_ENGINE:-ogre}"
+PX4_HOME_LAT="${PX4_HOME_LAT:-}"
+PX4_HOME_LON="${PX4_HOME_LON:-}"
+PX4_HOME_ALT="${PX4_HOME_ALT:-0.0}"
 GZ_PARTITION="${GZ_PARTITION:-drone-2026}"
 CUSTOM_MODELS_DIR="${CUSTOM_MODELS_DIR:-/home/sim/drone_workspace/drone-2026/SITL/custom_assets/models}"
 ENABLE_RANDOM_TARGET="${ENABLE_RANDOM_TARGET:-1}"
 TARGET_SPAWN_SESSION="${TARGET_SPAWN_SESSION:-sitl_target_spawn}"
 TARGET_MODEL_NAME="${TARGET_MODEL_NAME:-custom_target}"
+TARGET_MODEL_LIST="${TARGET_MODEL_LIST:-}"
+TARGET_SDF_LIST="${TARGET_SDF_LIST:-}"
 TARGET_INSTANCE_NAME_PREFIX="${TARGET_INSTANCE_NAME_PREFIX:-target}"
 TARGET_RANDOM_RADIUS_M="${TARGET_RANDOM_RADIUS_M:-15.0}"
 TARGET_MIN_RADIUS_M="${TARGET_MIN_RADIUS_M:-0.0}"
@@ -72,13 +77,68 @@ fi
 # With PX4 pre-compiled in the image (Dockerfile `make px4_sitl` — build only, no gz_* run), invoke only the
 # Ninja sim target (same as `make px4_sitl <target>`) — avoids a full `make`/`px4_sitl` pass at startup.
 SITL_BUILD_DIR="${SITL_BUILD_DIR:-build/px4_sitl_default}"
-su - "$SIM_USER" -c "tmux new-session -d -s ${SITL_SESSION} 'export DISPLAY=${VNC_DISPLAY} LIBGL_ALWAYS_SOFTWARE=${LIBGL_ALWAYS_SOFTWARE} PX4_GZ_SIM_RENDER_ENGINE=${PX4_GZ_SIM_RENDER_ENGINE} GZ_PARTITION=${GZ_PARTITION} GZ_SIM_RESOURCE_PATH=${GZ_SIM_RESOURCE_PATH} PX4_GZ_WORLD=${PX4_GZ_WORLD} HEADLESS=1 && cd /PX4-Autopilot && cmake --build ${SITL_BUILD_DIR} -- ${SITL_MAKE_TARGET}'"
+su - "$SIM_USER" -c "tmux new-session -d -s ${SITL_SESSION} 'export DISPLAY=${VNC_DISPLAY} LIBGL_ALWAYS_SOFTWARE=${LIBGL_ALWAYS_SOFTWARE} PX4_GZ_SIM_RENDER_ENGINE=${PX4_GZ_SIM_RENDER_ENGINE} GZ_PARTITION=${GZ_PARTITION} GZ_SIM_RESOURCE_PATH=${GZ_SIM_RESOURCE_PATH} PX4_GZ_WORLD=${PX4_GZ_WORLD} PX4_HOME_LAT=${PX4_HOME_LAT} PX4_HOME_LON=${PX4_HOME_LON} PX4_HOME_ALT=${PX4_HOME_ALT} HEADLESS=1 && cd /PX4-Autopilot && cmake --build ${SITL_BUILD_DIR} -- ${SITL_MAKE_TARGET}'"
 
 if [[ "${ENABLE_RANDOM_TARGET}" == "1" ]]; then
   if su - "$SIM_USER" -c "tmux has-session -t ${TARGET_SPAWN_SESSION}" >/dev/null 2>&1; then
     su - "$SIM_USER" -c "tmux kill-session -t ${TARGET_SPAWN_SESSION}" || true
   fi
-  su - "$SIM_USER" -c "tmux new-session -d -s ${TARGET_SPAWN_SESSION} 'export GZ_PARTITION=${GZ_PARTITION} GZ_SIM_RESOURCE_PATH=${GZ_SIM_RESOURCE_PATH} WORLD_NAME=${PX4_GZ_WORLD} TARGET_MODEL_NAME=${TARGET_MODEL_NAME} TARGET_INSTANCE_NAME_PREFIX=${TARGET_INSTANCE_NAME_PREFIX} TARGET_RANDOM_RADIUS_M=${TARGET_RANDOM_RADIUS_M} TARGET_MIN_RADIUS_M=${TARGET_MIN_RADIUS_M} TARGET_Z_M=${TARGET_Z_M} TARGET_RANDOM_YAW=${TARGET_RANDOM_YAW} TARGET_SDF_PATH=${TARGET_SDF_PATH} TARGET_SPAWN_TIMEOUT_S=${TARGET_SPAWN_TIMEOUT_S} && /home/sim/drone_workspace/drone-2026/SITL/web-sim/spawn_random_target.sh'"
+  TARGET_SPAWN_SCRIPT="/tmp/sitl_target_spawn.sh"
+  cat > "${TARGET_SPAWN_SCRIPT}" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+
+export GZ_PARTITION="${GZ_PARTITION}"
+export GZ_SIM_RESOURCE_PATH="${GZ_SIM_RESOURCE_PATH}"
+export WORLD_NAME="${PX4_GZ_WORLD}"
+export TARGET_RANDOM_RADIUS_M="${TARGET_RANDOM_RADIUS_M}"
+export TARGET_MIN_RADIUS_M="${TARGET_MIN_RADIUS_M}"
+export TARGET_Z_M="${TARGET_Z_M}"
+export TARGET_RANDOM_YAW="${TARGET_RANDOM_YAW}"
+export TARGET_SPAWN_TIMEOUT_S="${TARGET_SPAWN_TIMEOUT_S}"
+
+target_model_list="${TARGET_MODEL_LIST}"
+target_sdf_list="${TARGET_SDF_LIST}"
+
+# Backward compatibility: if the list vars are unset, use the original single-target vars.
+if [[ -z "\${target_model_list}" ]]; then
+  target_model_list="${TARGET_MODEL_NAME}"
+fi
+if [[ -z "\${target_sdf_list}" ]]; then
+  target_sdf_list="${TARGET_SDF_PATH}"
+fi
+
+IFS=',' read -r -a model_items <<< "\${target_model_list}"
+IFS=',' read -r -a sdf_items <<< "\${target_sdf_list}"
+
+spawned_count=0
+for i in "\${!model_items[@]}"; do
+  model_name="\$(echo "\${model_items[\$i]}" | xargs)"
+  if [[ -z "\${model_name}" ]]; then
+    continue
+  fi
+
+  sdf_path=""
+  if (( \${#sdf_items[@]} > i )); then
+    sdf_path="\$(echo "\${sdf_items[\$i]}" | xargs)"
+  fi
+  if [[ -z "\${sdf_path}" ]]; then
+    sdf_path="${CUSTOM_MODELS_DIR}/\${model_name}/model.sdf"
+  fi
+
+  echo "[target] spawning model \${model_name} from \${sdf_path}"
+  TARGET_MODEL_NAME="\${model_name}" \
+  TARGET_INSTANCE_NAME_PREFIX="${TARGET_INSTANCE_NAME_PREFIX}_\${model_name}" \
+  TARGET_SDF_PATH="\${sdf_path}" \
+    /home/sim/drone_workspace/drone-2026/SITL/web-sim/spawn_random_target.sh
+  spawned_count=\$((spawned_count + 1))
+done
+
+echo "[target] finished spawning \${spawned_count} target model(s)"
+EOF
+  chmod +x "${TARGET_SPAWN_SCRIPT}"
+  chown "${SIM_USER}:${SIM_USER}" "${TARGET_SPAWN_SCRIPT}"
+  su - "$SIM_USER" -c "tmux new-session -d -s ${TARGET_SPAWN_SESSION} '${TARGET_SPAWN_SCRIPT}'"
 fi
 
 if [[ "${ENABLE_SIM_GIMBAL_CAMERA}" == "1" ]]; then

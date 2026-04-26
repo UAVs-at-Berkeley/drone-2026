@@ -16,6 +16,7 @@ async function request(path, options = {}) {
 
 export const api = {
   health: () => request("/health"),
+  defaultMission: () => request("/mission/default"),
   prefill: () => request("/drone/prefill"),
   status: () => request("/drone/status"),
   tmuxLog: () => request("/drone/tmux-log"),

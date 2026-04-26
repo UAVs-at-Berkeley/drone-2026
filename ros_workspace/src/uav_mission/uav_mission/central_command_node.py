@@ -5,6 +5,7 @@ Central Command Node — loads a mission YAML and runs steps sequentially via RO
 Publishes /central_command/mission_status (MissionStatus).
 """
 
+import json
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type
 
 import rclpy
@@ -20,8 +21,6 @@ from uav_msgs.action import (
     StartTimeTrial,
 )
 from uav_msgs.msg import MissionStatus
-
-from uav_mission.mission_loader import load_mission_file
 
 DEFAULT_TAKEOFF_ALTITUDE_M = 2.0
 
@@ -91,7 +90,7 @@ class CentralCommandNode(Node):
         super().__init__("central_command_node")
 
         self.declare_parameter("takeoff_altitude_m", DEFAULT_TAKEOFF_ALTITUDE_M)
-        self.declare_parameter("mission_file", "")
+        self.declare_parameter("mission_steps_json", "")
         self.declare_parameter("step_timeout_sec", 0.0)
 
         self._status_pub = self.create_publisher(
@@ -116,18 +115,27 @@ class CentralCommandNode(Node):
         )
 
     def _load_mission_from_param(self):
-        path = str(self.get_parameter("mission_file").value).strip()
-        if path:
-            try:
-                self._steps = load_mission_file(path)
-                self.get_logger().info("Loaded mission from %s" % path)
-            except Exception as e:
-                self.get_logger().error("Failed to load mission file: %s" % str(e))
-                self._steps = [{"id": "takeoff"}]
-                self.get_logger().warn("Falling back to default single step: takeoff")
-        else:
+        raw_steps = str(self.get_parameter("mission_steps_json").value).strip()
+        if not raw_steps:
             self._steps = [{"id": "takeoff"}]
-            self.get_logger().info("mission_file empty; running default [takeoff].")
+            self.get_logger().info("mission_steps_json empty; running default [takeoff].")
+            return
+        try:
+            parsed = json.loads(raw_steps)
+            if not isinstance(parsed, list) or not parsed:
+                raise ValueError("mission_steps_json must decode to a non-empty list")
+            for i, step in enumerate(parsed):
+                if not isinstance(step, dict):
+                    raise ValueError("mission_steps_json[%d] must be an object" % i)
+                sid = step.get("id")
+                if not isinstance(sid, str) or not sid.strip():
+                    raise ValueError("mission_steps_json[%d].id must be a non-empty string" % i)
+            self._steps = parsed
+            self.get_logger().info("Loaded %d mission steps from launch parameters." % len(self._steps))
+        except Exception as e:
+            self.get_logger().error("Failed to parse mission_steps_json: %s" % str(e))
+            self._steps = [{"id": "takeoff"}]
+            self.get_logger().warn("Falling back to default single step: takeoff")
 
     def _get_client(self, cache_key: str, action_type: Type, server_name: str) -> ActionClient:
         if cache_key not in self._action_clients:
