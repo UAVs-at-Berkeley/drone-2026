@@ -4,11 +4,19 @@ Object Localization Node - autonomous object-localization mission.
 
 - Exposes StartObjectLocalization action on /object_localization/start.
 - Once triggered, this node owns the localization mission logic (placeholder).
+
+Planned Pipeline: 
+If the current target has 2 black sections detected, it does not have a number, and we move on.
+If it has 3 sections, we rotate so that we can run OCR to detect the number.
+
+We need to output a detection array with the location and ids of all the targets.
 """
 
 import rclpy
 from rclpy.node import Node
 from rclpy.action import ActionServer
+import cv2
+import numpy as np
 # from uav_msgs.msg import DetectionArray
 from uav_msgs.action import StartObjectLocalization
 
@@ -68,6 +76,12 @@ class ObjectLocalizationNode(Node):
         )
         goal_handle.succeed(result)
         return result
+    
+    def rotate_target(self, image: np.ndarray, xyxy: np.ndarray) -> Optional[np.ndarray]:
+        x1, y1, x2, y2 = map(int, xyxy)
+        cropped = image[y1:y2, x1:x2]
+        rotated = cv2.rotate(cropped, cv2.ROTATE_90_CLOCKWISE)
+        return rotated
 
 
 def main(args=None):
