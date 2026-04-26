@@ -311,7 +311,14 @@ export function estimateStartupProgress({
     [has(missionLogText, /offboard takeoff server ready|fc connected\. priming|prime done/i), [78, "Takeoff priming", "Offboard takeoff action is priming setpoints."]],
     [has(missionLogText, /offboard enabled|vehicle armed|climbing to altitude|OFFBOARD and armed\. Climbing\./i), [90, "Drone climbing", "Vehicle armed and climbing."]],
     [has(missionLogText, /in air\. takeoff complete|Reached IN_AIR|Airborne/i), [100, "Takeoff complete", "Drone is airborne.", true]],
-    [runMode === "passive" && has(missionLogText, /recording to .*bag|start_recording\.sh:/i), [100, "Passive recording active", "Recording stack is fully active.", true]],
+    [
+      runMode === "passive" &&
+        has(
+          missionLogText,
+          /passive camera stack|recording to .*bag|start_recording\.sh:|\[camera_node/i
+        ),
+      [100, "Passive recording active", "Recording and camera stack active.", true],
+    ],
   ]);
 
   let simSetupProgress = simSetupProgressRaw;

@@ -25,6 +25,7 @@ setup(
                 "launch/bringup.launch.py",
                 "launch/waypoint_only.launch.py",
                 "launch/cuasc.launch.py",
+                "launch/passive_camera.launch.py",
                 "launch/time_trial_only.launch.py",
             ],
         ),

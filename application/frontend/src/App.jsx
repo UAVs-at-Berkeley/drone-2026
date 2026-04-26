@@ -262,7 +262,7 @@ export default function App() {
     setInfo("");
     try {
       await api.startPassiveRecording();
-      setInfo("Passive recording started (start_recording.sh).");
+      setInfo("Passive recording started (network + mavros + bag + camera).");
       await refreshStatus();
     } catch (error) {
       setInfo(error.message);
