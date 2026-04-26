@@ -6,10 +6,12 @@ source "$_START_REC_DIR/start_ros.sh"
 # 1) Ensure eth0 is on the gimbal subnet (runtime ip(8), no netplan apply).
 # 2) Mavros in the background (does not block the rest).
 # 3) ros2 bag record in the background.
+# 4) When run standalone (passive record): uav_mission passive_camera.launch.py (gimbal + /image_data), unless PASSIVE_INCLUDE_CAMERA=0|off|no|false.
 #
 # ROS is loaded via start_ros.sh (sourced above).
 #
 # Bag env (optional): BAG_STORAGE=sqlite3|mcap (default sqlite3), BAG_START_CHECK_DELAY (seconds).
+# Camera (passive only): PASSIVE_INCLUDE_CAMERA, PASSIVE_CAMERA_EXTRA_ARGS (e.g. gimbal_ip:=192.168.144.108).
 # See docs/rosbag2-recording-notes.md if bags are empty or lack metadata.yaml.
 #
 # Usage:
@@ -22,6 +24,8 @@ ETH_GIMBAL_IF="${ETH_GIMBAL_IF:-eth0}"
 ETH_GIMBAL_IP="${ETH_GIMBAL_IP:-192.168.144.10/24}"
 BAG_DIR="${BAG_DIR:-/home/$USER/drone_workspace/bags}"
 MAVROS_READY_DELAY="${MAVROS_READY_DELAY:-2}"
+# Physical default is USB serial; for SITL use e.g. MAVROS_FCU_URL=udp://:14540@
+MAVROS_FCU_URL="${MAVROS_FCU_URL:-serial:///dev/ttyACM0:921600}"
 BAG_STEM="${BAG_STEM:-flight_$(date +%Y%m%d_%H%M%S)}"
 # sqlite3 tends to finalize more reliably than mcap for short runs; override with BAG_STORAGE=mcap if desired.
 BAG_STORAGE="${BAG_STORAGE:-sqlite3}"
@@ -77,9 +81,21 @@ recording_stop_mavros() {
   fi
 }
 
+recording_stop_passive_camera_launch() {
+  local prefix=${1:-start_recording.sh}
+  if [[ -n "${CAMERA_LAUNCH_PID:-}" ]] && kill -0 "$CAMERA_LAUNCH_PID" 2>/dev/null; then
+    echo "$prefix: stopping passive camera launch (ros2 launch)..."
+    signal_int_process_group "$CAMERA_LAUNCH_PID"
+    if ! wait "$CAMERA_LAUNCH_PID" 2>/dev/null; then
+      echo "$prefix: warn: wait $CAMERA_LAUNCH_PID (camera launch) did not reap a child" >&2
+    fi
+  fi
+}
+
 recording_cleanup_stop_stack() {
   local prefix=${1:-start_recording.sh}
   recording_stop_bag "$prefix"
+  recording_stop_passive_camera_launch "$prefix"
   recording_stop_mavros "$prefix"
   warn_if_bag_incomplete
 }
@@ -103,7 +119,7 @@ drone_recording_steps() {
   fi
 
   # --- 2) mavros (background)
-  ros2 launch mavros px4.launch fcu_url:=serial:///dev/ttyACM0:921600 &
+  ros2 launch mavros px4.launch fcu_url:="$MAVROS_FCU_URL" &
   MAVROS_PID=$!
   sleep "$MAVROS_READY_DELAY"
 
@@ -136,5 +152,26 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
   trap 'cleanup; exit 143' TERM
 
   drone_recording_steps
+
+  # Optional camera + gimbal node (not when sourced from start_drone.sh — that uses cuasc for camera).
+  if [[ "${PASSIVE_INCLUDE_CAMERA:-1}" != "0" && "${PASSIVE_INCLUDE_CAMERA:-1}" != "false" && "${PASSIVE_INCLUDE_CAMERA:-1}" != "no" && "${PASSIVE_INCLUDE_CAMERA:-1}" != "off" ]]; then
+    if [[ -n "${PASSIVE_CAMERA_EXTRA_ARGS:-}" ]]; then
+      # shellcheck disable=SC2206
+      _PCAM_EXTRA=( ${PASSIVE_CAMERA_EXTRA_ARGS} )
+    else
+      _PCAM_EXTRA=()
+    fi
+    _UAV_PREFIX="$(ros2 pkg prefix uav_mission 2>/dev/null || true)"
+    if [[ -z "$_UAV_PREFIX" ]]; then
+      echo "start_recording.sh: ERROR — ROS package uav_mission not found. Source ros_workspace/install/setup.bash (see start_ros.sh)." >&2
+    elif [[ ! -f "$_UAV_PREFIX/share/uav_mission/launch/passive_camera.launch.py" ]]; then
+      echo "start_recording.sh: ERROR — passive_camera.launch.py not installed under uav_mission. On the Pi run:" >&2
+      echo "  cd <path-to>/ros_workspace && colcon build --packages-select uav_mission && source install/setup.bash" >&2
+    fi
+    ros2 launch uav_mission passive_camera.launch.py "${_PCAM_EXTRA[@]}" &
+    CAMERA_LAUNCH_PID=$!
+    echo "start_recording.sh: passive camera stack (passive_camera.launch.py) PID $CAMERA_LAUNCH_PID"
+  fi
+
   wait
 fi

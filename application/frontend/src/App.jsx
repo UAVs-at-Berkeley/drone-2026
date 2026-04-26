@@ -1,7 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "./api";
 
-const defaultMission = `mission:
+const fallbackMission = `environment:
+  Geofence:
+    points:
+      - [37.0, -122.0, 30.0]
+  waypoints:
+    points:
+      - [37.0, -122.0, 30.0]
+  red_target: [37.0, -122.0, 30.0]
+  x_target: [37.0, -122.0, 30.0]
+  number_target: [37.0, -122.0, 30.0]
+mission:
   steps:
     - takeoff
     - time_trial
@@ -18,20 +28,46 @@ export default function App() {
     sshConnected: false,
     inFlight: false,
     runMode: null,
+    mode: "physical",
+    simViewerUrl: "",
     lastError: "",
+    simSetupProgress: {
+      percent: 0,
+      step: "Idle",
+      detail: "Waiting to start.",
+      complete: false,
+    },
+    missionStartupProgress: {
+      percent: 0,
+      step: "Idle",
+      detail: "Waiting to start.",
+      complete: false,
+    },
   });
   const [missionName, setMissionName] = useState("mission_ui.yaml");
-  const [missionYaml, setMissionYaml] = useState(defaultMission);
+  const [missionYaml, setMissionYaml] = useState(fallbackMission);
   const [savedMissionPath, setSavedMissionPath] = useState("");
   const [info, setInfo] = useState("");
   const [busy, setBusy] = useState(false);
+  const [connectionMode, setConnectionMode] = useState("physical");
   const [sshPassword, setSshPassword] = useState("");
+  const [prefillPasswords, setPrefillPasswords] = useState({ physical: "", sim: "" });
   const [tmuxLog, setTmuxLog] = useState("");
   const [tmuxLogPaused, setTmuxLogPaused] = useState(false);
   const [tmuxLogNote, setTmuxLogNote] = useState("");
   const [followLog, setFollowLog] = useState(true);
   const followLogRef = useRef(true);
   const tmuxPreRef = useRef(null);
+  const [envRows, setEnvRows] = useState(null);
+  const [envDraft, setEnvDraft] = useState({});
+  const [envNotice, setEnvNotice] = useState("");
+  const [envPanelBusy, setEnvPanelBusy] = useState(false);
+  const [envPanelError, setEnvPanelError] = useState("");
+  const [envSaveBusy, setEnvSaveBusy] = useState(false);
+  const [simShutdownBusy, setSimShutdownBusy] = useState(false);
+  const [hotswapBusy, setHotswapBusy] = useState(false);
+  const [hotswapPrepBusy, setHotswapPrepBusy] = useState(false);
+  const [hotswapStatus, setHotswapStatus] = useState({ type: "idle", message: "" });
 
   useEffect(() => {
     followLogRef.current = followLog;
@@ -41,17 +77,44 @@ export default function App() {
     api
       .prefill()
       .then((data) => {
-        if (data?.sshPassword) {
-          setSshPassword(data.sshPassword);
-        }
+        const physical = typeof data?.physicalSshPassword === "string" ? data.physicalSshPassword : "";
+        const sim = typeof data?.simSshPassword === "string" ? data.simSshPassword : "";
+        setPrefillPasswords({ physical, sim });
+        setSshPassword(physical);
       })
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .defaultMission()
+      .then((data) => {
+        if (cancelled) return;
+        if (typeof data?.yamlText === "string" && data.yamlText.trim()) {
+          setMissionYaml(data.yamlText);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (status.sshConnected) {
+      return;
+    }
+    setSshPassword(prefillPasswords[connectionMode] ?? "");
+  }, [connectionMode, prefillPasswords, status.sshConnected]);
 
   const canSave = status.sshConnected && !busy;
   const canTakeoff = status.sshConnected && !status.inFlight && !busy && Boolean(savedMissionPath);
   const canPassiveRecord = status.sshConnected && !status.inFlight && !busy;
   const canEndMission = status.sshConnected && status.inFlight && !busy;
+  const simModeActive = (status.mode || connectionMode) === "sim";
+  const canHotswapRepo =
+    simModeActive && status.sshConnected && !busy && !simShutdownBusy && !hotswapBusy && !hotswapPrepBusy;
 
   const statusLabel = useMemo(() => {
     if (status.connectionState === "connected_idle") return "Connected";
@@ -75,6 +138,46 @@ export default function App() {
     return "Active";
   }, [status.inFlight, status.runMode]);
 
+  const simSetupProgress = status.simSetupProgress || {
+    percent: 0,
+    step: "Idle",
+    detail: "Waiting to start.",
+    complete: false,
+  };
+
+  const missionStartupProgress = status.missionStartupProgress || {
+    percent: 0,
+    step: "Idle",
+    detail: "Waiting to start.",
+    complete: false,
+  };
+
+  const clampPct = (value) => Math.max(0, Math.min(100, Number(value) || 0));
+
+  function normalizeBranchInput(raw) {
+    const branch = String(raw || "").trim();
+    if (!branch) {
+      return "";
+    }
+    return branch;
+  }
+
+  const resolvedSimViewerUrl = useMemo(() => {
+    const raw = status.simViewerUrl || "";
+    if (!raw) {
+      return "";
+    }
+    try {
+      const parsed = new URL(raw, window.location.origin);
+      if (parsed.hostname === "127.0.0.1" || parsed.hostname === "localhost") {
+        parsed.hostname = window.location.hostname;
+      }
+      return parsed.toString();
+    } catch {
+      return raw;
+    }
+  }, [status.simViewerUrl]);
+
   async function refreshStatus() {
     try {
       const next = await api.status();
@@ -88,17 +191,40 @@ export default function App() {
     setBusy(true);
     setInfo("");
     try {
-      const next = await api.connect(sshPassword);
+      const next = await api.connect({ mode: connectionMode, password: sshPassword });
       setStatus(next);
       if (next.sshConnected) {
-        setInfo("Connected to drone.");
+        setInfo(connectionMode === "sim" ? "Connected to local simulation." : "Connected to drone.");
       } else {
         setInfo(next.lastError || "Could not connect. Check backend .env and logs.");
       }
     } catch (error) {
+      if (error?.details?.state) {
+        setStatus(error.details.state);
+      }
       setInfo(error.message);
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function shutdownSimulation() {
+    setSimShutdownBusy(true);
+    setInfo("");
+    try {
+      const result = await api.shutdownSimulation();
+      if (result?.state) {
+        setStatus(result.state);
+      }
+      setInfo("Simulation docker compose shutdown requested.");
+      await refreshStatus();
+    } catch (error) {
+      if (error?.details?.state) {
+        setStatus(error.details.state);
+      }
+      setInfo(error.message);
+    } finally {
+      setSimShutdownBusy(false);
     }
   }
 
@@ -136,7 +262,7 @@ export default function App() {
     setInfo("");
     try {
       await api.startPassiveRecording();
-      setInfo("Passive recording started (start_recording.sh).");
+      setInfo("Passive recording started (network + mavros + bag + camera).");
       await refreshStatus();
     } catch (error) {
       setInfo(error.message);
@@ -145,17 +271,121 @@ export default function App() {
     }
   }
 
+  async function loadEnvPanel() {
+    setEnvPanelBusy(true);
+    setEnvPanelError("");
+    try {
+      const data = await api.getSettingsEnv();
+      const draft = {};
+      for (const f of data.fields) {
+        draft[f.key] = f.value ?? "";
+      }
+      setEnvDraft(draft);
+      setEnvRows(data.fields.map(({ key, label, sensitive }) => ({ key, label, sensitive })));
+      setEnvNotice(data.notice || "");
+    } catch (error) {
+      setEnvPanelError(error.message);
+      setEnvRows(null);
+    } finally {
+      setEnvPanelBusy(false);
+    }
+  }
+
+  async function handleEnvDetailsToggle(e) {
+    if (e.currentTarget.open) {
+      await loadEnvPanel();
+    }
+  }
+
+  async function saveEnvToDisk() {
+    if (!envRows) {
+      return;
+    }
+    setEnvSaveBusy(true);
+    setInfo("");
+    try {
+      const result = await api.putSettingsEnv(envDraft);
+      setInfo(result.message || "Saved backend .env.");
+      await loadEnvPanel();
+      const pre = await api.prefill();
+      const physical = typeof pre?.physicalSshPassword === "string" ? pre.physicalSshPassword : "";
+      const sim = typeof pre?.simSshPassword === "string" ? pre.simSshPassword : "";
+      setPrefillPasswords({ physical, sim });
+      if (!status.sshConnected) {
+        setSshPassword((connectionMode === "sim" ? sim : physical) || "");
+      }
+    } catch (error) {
+      setInfo(error.message);
+    } finally {
+      setEnvSaveBusy(false);
+    }
+  }
+
   async function stopMission() {
     setBusy(true);
     setInfo("");
     try {
-      await api.stopFlight();
-      setInfo("End mission: stop signal sent to tmux (recording or full stack).");
+      if (simModeActive) {
+        await api.resetSimulation();
+        setInfo("Simulation mission ended and SITL restarted to initial state.");
+      } else {
+        await api.stopFlight();
+        setInfo("End mission: stop signal sent to tmux (recording or full stack).");
+      }
       await refreshStatus();
     } catch (error) {
       setInfo(error.message);
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function runRepoHotswap(branch) {
+    const normalizedBranch = normalizeBranchInput(branch);
+    if (!normalizedBranch) {
+      setInfo("Branch name is required.");
+      setHotswapStatus({ type: "error", message: "Branch name is required." });
+      return;
+    }
+    setHotswapBusy(true);
+    setInfo(`Fetching drone-2026 branch "${normalizedBranch}" and updating simulation...`);
+    setHotswapStatus({ type: "pending", message: `Updating from branch "${normalizedBranch}"...` });
+    try {
+      const result = await api.hotswapSimulationBranch({ branch: normalizedBranch });
+      if (result?.state) {
+        setStatus(result.state);
+      }
+      setInfo(`Repo hotswap complete from branch "${normalizedBranch}". Simulation reset complete.`);
+      setHotswapStatus({ type: "success", message: `Updated from "${normalizedBranch}".` });
+      await refreshStatus();
+    } catch (error) {
+      if (error?.details?.state) {
+        setStatus(error.details.state);
+      }
+      setInfo(error.message);
+      setHotswapStatus({ type: "error", message: error.message || "Upload failed." });
+    } finally {
+      setHotswapBusy(false);
+    }
+  }
+
+  async function handleLoadUpdatedRepo() {
+    if (hotswapBusy || hotswapPrepBusy || busy) {
+      return;
+    }
+    setHotswapPrepBusy(true);
+    setInfo("Preparing branch update...");
+    setHotswapStatus({ type: "pending", message: "Choose a branch to load." });
+    try {
+      const branchInput = window.prompt("Enter branch to load from UAVs-at-Berkeley/drone-2026", "main");
+      if (branchInput == null) {
+        setInfo("Branch update canceled.");
+        setHotswapStatus({ type: "idle", message: "" });
+        return;
+      }
+      await runRepoHotswap(branchInput);
+    } finally {
+      setHotswapPrepBusy(false);
     }
   }
 
@@ -164,11 +394,11 @@ export default function App() {
     const interval = setInterval(() => {
       refreshStatus();
       if (reconnectStates.has(status.connectionState) && status.inFlight) {
-        api.connect(sshPassword).catch(() => {});
+        api.connect({ mode: status.mode || connectionMode, password: sshPassword }).catch(() => {});
       }
     }, 3000);
     return () => clearInterval(interval);
-  }, [status.connectionState, status.inFlight, sshPassword]);
+  }, [status.connectionState, status.inFlight, status.mode, connectionMode, sshPassword]);
 
   useEffect(() => {
     if (!status.sshConnected || tmuxLogPaused) {
@@ -213,6 +443,44 @@ export default function App() {
   return (
     <main className="page">
       <h1>Drone Control</h1>
+
+      <details className="panel env-details" onToggle={handleEnvDetailsToggle}>
+        <summary>Backend environment (.env)</summary>
+        <p className="tmux-log-hint">
+          View or edit variables stored in <code>application/backend/.env</code>. Saving writes the file and
+          reloads settings in this backend process (except <code>PORT</code>, which needs a manual restart).
+        </p>
+        {envNotice ? <p className="tmux-log-hint">{envNotice}</p> : null}
+        {envPanelBusy ? <p>Loading…</p> : null}
+        {envPanelError ? <p className="env-panel-error">{envPanelError}</p> : null}
+        {envRows &&
+          envRows.map((row) => (
+            <div className="env-field-row" key={row.key}>
+              <label>
+                {row.label}
+                <span className="env-key-tag">{row.key}</span>
+                <input
+                  type={row.sensitive ? "password" : "text"}
+                  autoComplete="off"
+                  value={envDraft[row.key] ?? ""}
+                  onChange={(e) => setEnvDraft((prev) => ({ ...prev, [row.key]: e.target.value }))}
+                  disabled={envSaveBusy}
+                />
+              </label>
+            </div>
+          ))}
+        {envRows ? (
+          <div className="env-actions">
+            <button type="button" onClick={saveEnvToDisk} disabled={envSaveBusy || busy}>
+              {envSaveBusy ? "Saving…" : "Save .env"}
+            </button>
+            <button type="button" onClick={loadEnvPanel} disabled={envPanelBusy || envSaveBusy} className="btn-secondary">
+              Reload from disk
+            </button>
+          </div>
+        ) : null}
+      </details>
+
       <section className="panel">
         <p>
           <strong>Status:</strong> {statusLabel}
@@ -220,6 +488,47 @@ export default function App() {
         <p>
           <strong>Activity:</strong> {activityLabel}
         </p>
+        <div className="startup-progress">
+          <div className="startup-progress-head">
+            <strong>Simulation setup:</strong>
+            <span>{clampPct(simSetupProgress.percent)}%</span>
+          </div>
+          <div className="startup-progress-track" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={clampPct(simSetupProgress.percent)}>
+            <div
+              className="startup-progress-fill"
+              style={{ width: `${clampPct(simSetupProgress.percent)}%` }}
+            />
+          </div>
+          <p className="startup-progress-step">
+            <strong>{simSetupProgress.step || "Idle"}:</strong> {simSetupProgress.detail || "Waiting to start."}
+          </p>
+        </div>
+        <div className="startup-progress">
+          <div className="startup-progress-head">
+            <strong>Drone startup (after Takeoff):</strong>
+            <span>{clampPct(missionStartupProgress.percent)}%</span>
+          </div>
+          <div className="startup-progress-track mission-progress-track" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={clampPct(missionStartupProgress.percent)}>
+            <div
+              className="startup-progress-fill mission-progress-fill"
+              style={{ width: `${clampPct(missionStartupProgress.percent)}%` }}
+            />
+          </div>
+          <p className="startup-progress-step">
+            <strong>{missionStartupProgress.step || "Idle"}:</strong> {missionStartupProgress.detail || "Waiting to start."}
+          </p>
+        </div>
+        <label>
+          Control mode
+          <select
+            value={connectionMode}
+            onChange={(e) => setConnectionMode(e.target.value)}
+            disabled={busy || status.sshConnected}
+          >
+            <option value="physical">Physical drone</option>
+            <option value="sim">Local simulation (Docker SITL)</option>
+          </select>
+        </label>
         <label>
           SSH password (optional if using key-only or .env password)
           <input
@@ -228,13 +537,78 @@ export default function App() {
             value={sshPassword}
             onChange={(e) => setSshPassword(e.target.value)}
             disabled={busy || status.sshConnected}
-            placeholder="Leave empty to use key or DRONE_SSH_PASSWORD from .env"
+            placeholder={
+              connectionMode === "sim"
+                ? "Leave empty to use key or SIM_SSH_PASSWORD from .env"
+                : "Leave empty to use key or DRONE_SSH_PASSWORD from .env"
+            }
           />
         </label>
         <button onClick={connect} disabled={busy || status.sshConnected}>
-          {status.sshConnected ? "Connected" : "Connect to Drone"}
+          {status.sshConnected ? "Connected" : connectionMode === "sim" ? "Start + Connect Simulation" : "Connect to Drone"}
         </button>
+        {simModeActive ? (
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={shutdownSimulation}
+            disabled={simShutdownBusy || busy}
+          >
+            {simShutdownBusy ? "Shutting down simulation..." : "Shutdown Simulation Container"}
+          </button>
+        ) : null}
       </section>
+
+      {simModeActive && resolvedSimViewerUrl ? (
+        <section className="panel">
+          <h2>Simulation view (Gazebo via noVNC)</h2>
+          <p className="tmux-log-hint">
+            Live simulator desktop stream from the Docker container.
+          </p>
+          <iframe
+            title="Simulation noVNC stream"
+            src={resolvedSimViewerUrl}
+            className="sim-viewer"
+            allow="clipboard-read; clipboard-write"
+          />
+        </section>
+      ) : null}
+
+      {simModeActive ? (
+        <details className="panel">
+          <summary>Simulation connection diagnostics</summary>
+          <p className="tmux-log-hint">
+            Last connect attempt trace, compose status, and recent compose logs for debugging startup failures.
+          </p>
+          <p>
+            <strong>Backend mode:</strong> {status.mode || "unknown"}
+          </p>
+          <p>
+            <strong>Connection state:</strong> {status.connectionState || "unknown"}
+          </p>
+          <p>
+            <strong>Viewer URL:</strong> {status.simViewerUrl || "not set"}
+          </p>
+          {Array.isArray(status.connectTrace) && status.connectTrace.length > 0 ? (
+            <>
+              <h3>Connect trace</h3>
+              <pre className="tmux-log">{status.connectTrace.join("\n")}</pre>
+            </>
+          ) : null}
+          {status.composePs ? (
+            <>
+              <h3>docker compose ps --all</h3>
+              <pre className="tmux-log">{status.composePs}</pre>
+            </>
+          ) : null}
+          {status.composeLogsTail ? (
+            <>
+              <h3>docker compose logs --tail 120</h3>
+              <pre className="tmux-log">{status.composeLogsTail}</pre>
+            </>
+          ) : null}
+        </details>
+      ) : null}
 
       <section className="panel">
         <h2>Mission YAML</h2>
@@ -263,6 +637,26 @@ export default function App() {
         <button onClick={stopMission} disabled={!canEndMission}>
           End mission
         </button>
+        {simModeActive ? (
+          <>
+            <button onClick={handleLoadUpdatedRepo} disabled={!canHotswapRepo} className="btn-secondary">
+              {hotswapBusy
+                ? "Loading repo update..."
+                : hotswapPrepBusy
+                  ? "Preparing branch update..."
+                  : "Load Repo Branch"}
+            </button>
+            {hotswapStatus.type !== "idle" ? (
+              <span
+                className={`hotswap-status hotswap-status-${hotswapStatus.type}`}
+                role="status"
+                aria-live="polite"
+              >
+                {hotswapStatus.message}
+              </span>
+            ) : null}
+          </>
+        ) : null}
       </section>
 
       {status.sshConnected && (

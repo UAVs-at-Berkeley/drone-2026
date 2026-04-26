@@ -1,5 +1,7 @@
 # Goal: start autonomous payload-drop routine
-uint8 placeholder
+float64 target_latitude_deg    # target GPS latitude (decimal degrees)
+float64 target_longitude_deg   # target GPS longitude (decimal degrees)
+float64 cruise_altitude_m      # altitude above home to cruise and fly to target (meters)
 
 ---
 # Result
@@ -8,6 +10,5 @@ string message
 
 ---
 # Feedback
-float64 progress   # 0.0–1.0
 string phase
-
+string detail

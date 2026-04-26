@@ -1,5 +1,4 @@
 import os
-
 from setuptools import find_packages, setup
 
 package_name = "uav_mission"
@@ -26,6 +25,8 @@ setup(
                 "launch/bringup.launch.py",
                 "launch/waypoint_only.launch.py",
                 "launch/cuasc.launch.py",
+                "launch/passive_camera.launch.py",
+                "launch/time_trial_only.launch.py",
             ],
         ),
         ("share/" + package_name + "/missions", mission_paths),
@@ -49,6 +50,7 @@ setup(
             "waypoint_node = uav_mission.waypoint_node:main",
             "time_trial_node = uav_mission.time_trial_node:main",
             "object_localization_node = uav_mission.object_localization_node:main",
+            "payload_drop_node = uav_mission.payload_drop_node:main",
         ],
     },
 )

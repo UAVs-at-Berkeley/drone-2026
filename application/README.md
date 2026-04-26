@@ -8,7 +8,7 @@ Local web app for controlling the drone without manually SSHing and running scri
 - Show current connection and flight state.
 - Edit and save mission YAML to drone mission directory.
 - **Takeoff**: full stack (`start_drone.sh <mission>`) in remote tmux.
-- **Passive record**: recording stack only (`start_recording.sh`) in the same tmux session.
+- **Passive record**: `start_recording.sh` in the same tmux session (gimbal subnet, mavros, rosbag, and `passive_camera.launch.py` for `camera_node`). Set `PASSIVE_INCLUDE_CAMERA=0` on the drone to skip the camera launch.
 - **End mission**: Ctrl+C equivalent via tmux — stops whichever mode is running (passive or full).
 - **Tmux log panel**: while connected, polls `tmux capture-pane` for read-only ROS / script output from the drone session.
 - Reconnect-aware polling/status updates after link loss.

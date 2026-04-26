@@ -7,20 +7,26 @@ async function request(path, options = {}) {
   });
   const json = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(json.error || `Request failed (${response.status})`);
+    const err = new Error(json.error || `Request failed (${response.status})`);
+    err.details = json;
+    throw err;
   }
   return json;
 }
 
 export const api = {
   health: () => request("/health"),
+  defaultMission: () => request("/mission/default"),
   prefill: () => request("/drone/prefill"),
   status: () => request("/drone/status"),
   tmuxLog: () => request("/drone/tmux-log"),
-  connect: (password = "") =>
+  connect: ({ mode = "physical", password = "" } = {}) =>
     request("/drone/connect", {
       method: "POST",
-      body: JSON.stringify({ password: typeof password === "string" ? password : "" }),
+      body: JSON.stringify({
+        mode,
+        password: typeof password === "string" ? password : "",
+      }),
     }),
   saveMission: (filename, yamlText) =>
     request("/mission/save", {
@@ -34,4 +40,22 @@ export const api = {
     }),
   startPassiveRecording: () => request("/flight/start-passive", { method: "POST" }),
   stopFlight: () => request("/flight/stop", { method: "POST" }),
+  resetSimulation: () => request("/sim/reset", { method: "POST" }),
+  hotswapSimulationCode: ({ files, sourceName = "" }) =>
+    request("/sim/hotswap", {
+      method: "POST",
+      body: JSON.stringify({ files, sourceName }),
+    }),
+  hotswapSimulationBranch: ({ branch = "main" } = {}) =>
+    request("/sim/hotswap", {
+      method: "POST",
+      body: JSON.stringify({ branch }),
+    }),
+  shutdownSimulation: () => request("/sim/shutdown", { method: "POST" }),
+  getSettingsEnv: () => request("/settings/env"),
+  putSettingsEnv: (values) =>
+    request("/settings/env", {
+      method: "PUT",
+      body: JSON.stringify({ values }),
+    }),
 };

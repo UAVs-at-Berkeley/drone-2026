@@ -34,8 +34,70 @@ body {
   margin-right: 0;
 }
 
+.hotswap-status {
+  font-size: 0.85rem;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+}
+
+.hotswap-status-pending {
+  color: #bfdbfe;
+  background: #1e3a8a;
+  border-color: #2563eb;
+}
+
+.hotswap-status-success {
+  color: #bbf7d0;
+  background: #14532d;
+  border-color: #22c55e;
+}
+
+.hotswap-status-error {
+  color: #fecaca;
+  background: #7f1d1d;
+  border-color: #ef4444;
+}
+
+.startup-progress {
+  margin: 12px 0 10px;
+}
+
+.startup-progress-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.startup-progress-track {
+  width: 100%;
+  height: 12px;
+  border-radius: 999px;
+  border: 1px solid #334155;
+  background: #0b1220;
+  overflow: hidden;
+}
+
+.startup-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #2563eb, #22c55e);
+  transition: width 0.4s ease;
+}
+
+.mission-progress-fill {
+  background: linear-gradient(90deg, #0ea5e9, #8b5cf6);
+}
+
+.startup-progress-step {
+  margin: 8px 0 0;
+  font-size: 0.9rem;
+  color: #cbd5e1;
+}
+
 textarea,
-input {
+input,
+select {
   width: 100%;
   margin-top: 8px;
   margin-bottom: 12px;
@@ -81,6 +143,56 @@ button:disabled {
   user-select: none;
 }
 
+.env-details summary {
+  cursor: pointer;
+  font-weight: 600;
+  user-select: none;
+}
+
+.env-details summary::-webkit-details-marker {
+  color: #94a3b8;
+}
+
+.env-field-row {
+  margin-bottom: 14px;
+}
+
+.env-field-row label {
+  display: block;
+  font-size: 0.9rem;
+  color: #cbd5e1;
+}
+
+.env-key-tag {
+  display: block;
+  margin-top: 2px;
+  margin-bottom: 6px;
+  font-size: 0.75rem;
+  color: #64748b;
+  font-family: ui-monospace, "Cascadia Mono", "Segoe UI Mono", Menlo, Consolas, monospace;
+}
+
+.env-actions {
+  margin-top: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+button.btn-secondary {
+  background: #334155;
+}
+
+button.btn-secondary:hover:not(:disabled) {
+  background: #475569;
+}
+
+.env-panel-error {
+  color: #f87171;
+  margin-bottom: 8px;
+}
+
 .tmux-log {
   margin: 0;
   max-height: 320px;
@@ -95,4 +207,15 @@ button:disabled {
   border: 1px solid #334155;
   border-radius: 6px;
   color: #cbd5e1;
+}
+
+.sim-viewer {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  min-height: 420px;
+  max-height: 75vh;
+  height: auto;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  background: #0b1220;
 }

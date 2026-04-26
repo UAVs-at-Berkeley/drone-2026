@@ -2,13 +2,16 @@
 """
 Offboard takeoff action server — MAVROS offboard prime, OFFBOARD mode, arm, climb to goal altitude.
 
-Completes with success when ExtendedState reports IN_AIR. Does not land.
+Completes with success when ExtendedState reports IN_AIR and altitude is within
+takeoff_altitude_tolerance_m of the requested goal altitude. Does not land.
 
-After success this node stops publishing hold setpoints. If the vehicle remains in OFFBOARD,
-another node should publish to /mavros/setpoint_position/local promptly (e.g. waypoint mission).
+After reaching the goal altitude, this node briefly keeps publishing hold setpoints
+for handoff_hold_sec, then returns success. If the vehicle remains in OFFBOARD after
+that, another node should publish to /mavros/setpoint_position/local promptly.
 """
 
 import rclpy
+import time
 from rclpy.action import ActionServer
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
@@ -25,11 +28,16 @@ LANDED_STATE_IN_AIR = 2
 SETPOINT_RATE_HZ = 20.0
 REQUEST_INTERVAL_SEC = 5.0
 PRIME_COUNT = 100
+SETPOINT_PERIOD_SEC = 1.0 / SETPOINT_RATE_HZ
+DEFAULT_TAKEOFF_ALT_TOLERANCE_M = 0.25
+DEFAULT_HANDOFF_HOLD_SEC = 1.5
 
 
 class OffboardTakeoffServer(Node):
     def __init__(self):
         super().__init__("offboard_takeoff_server")
+        self.declare_parameter("takeoff_altitude_tolerance_m", DEFAULT_TAKEOFF_ALT_TOLERANCE_M)
+        self.declare_parameter("handoff_hold_sec", DEFAULT_HANDOFF_HOLD_SEC)
         self._cb_group = ReentrantCallbackGroup()
 
         self._current_state = State()
@@ -37,6 +45,7 @@ class OffboardTakeoffServer(Node):
         self._current_state.mode = ""
         self._current_state.armed = False
         self._landed_state = LANDED_STATE_ON_GROUND
+        self._current_altitude_m = None
 
         qos = QoSProfile(
             depth=10,
@@ -54,6 +63,13 @@ class OffboardTakeoffServer(Node):
             ExtendedState,
             "/mavros/extended_state",
             self._extended_state_cb,
+            qos,
+            callback_group=self._cb_group,
+        )
+        self.create_subscription(
+            PoseStamped,
+            "/mavros/local_position/pose",
+            self._local_pose_cb,
             qos,
             callback_group=self._cb_group,
         )
@@ -88,6 +104,9 @@ class OffboardTakeoffServer(Node):
 
     def _extended_state_cb(self, msg: ExtendedState):
         self._landed_state = msg.landed_state
+
+    def _local_pose_cb(self, msg: PoseStamped):
+        self._current_altitude_m = float(msg.pose.position.z)
 
     def _publish_feedback(self, goal_handle, phase: str, detail: str = ""):
         fb = OffboardTakeoff.Feedback()
@@ -142,9 +161,10 @@ class OffboardTakeoffServer(Node):
 
     def _execute_callback(self, goal_handle):
         altitude_m = float(goal_handle.request.takeoff_altitude_m)
+        tolerance_m = float(self.get_parameter("takeoff_altitude_tolerance_m").value)
         phase = "wait_connection"
         prime_count = 0
-        last_request_ns = 0
+        last_request_sec = 0.0
         last_feedback_phase = ""
 
         def publish_phase(p: str, detail: str = ""):
@@ -153,7 +173,6 @@ class OffboardTakeoffServer(Node):
                 last_feedback_phase = p
                 self._publish_feedback(goal_handle, p, detail)
 
-        rate = self.create_rate(int(SETPOINT_RATE_HZ))
         publish_phase("wait_connection", "Waiting for FC connection")
 
         while rclpy.ok():
@@ -167,12 +186,12 @@ class OffboardTakeoffServer(Node):
 
             if phase == "wait_connection":
                 if not self._current_state.connected:
-                    rate.sleep()
+                    time.sleep(SETPOINT_PERIOD_SEC)
                     continue
                 self.get_logger().info("FC connected. Priming with %d setpoints." % PRIME_COUNT)
                 phase = "prime"
                 prime_count = 0
-                last_request_ns = self.get_clock().now().nanoseconds
+                last_request_sec = time.monotonic()
                 publish_phase("prime", "Sending initial setpoints")
 
             if phase == "prime":
@@ -181,18 +200,18 @@ class OffboardTakeoffServer(Node):
                 if prime_count >= PRIME_COUNT:
                     self.get_logger().info("Prime done. Requesting OFFBOARD and arm (every 5 s).")
                     phase = "offboard_arm"
-                    last_request_ns = self.get_clock().now().nanoseconds
+                    last_request_sec = time.monotonic()
                     publish_phase("offboard_arm", "Requesting OFFBOARD and arm")
-                rate.sleep()
+                time.sleep(SETPOINT_PERIOD_SEC)
                 continue
 
             if phase in ("offboard_arm", "takeoff_wait"):
                 self._publish_setpoint(altitude_m)
 
             if phase == "offboard_arm":
-                now_ns = self.get_clock().now().nanoseconds
-                if (now_ns - last_request_ns) >= int(REQUEST_INTERVAL_SEC * 1e9):
-                    last_request_ns = now_ns
+                now_sec = time.monotonic()
+                if (now_sec - last_request_sec) >= REQUEST_INTERVAL_SEC:
+                    last_request_sec = now_sec
                     if self._current_state.mode != "OFFBOARD":
                         self._call_set_mode()
                     elif not self._current_state.armed:
@@ -201,22 +220,64 @@ class OffboardTakeoffServer(Node):
                     self.get_logger().info("OFFBOARD and armed. Climbing.")
                     phase = "takeoff_wait"
                     publish_phase("takeoff_wait", "Climbing to altitude")
-                rate.sleep()
+                time.sleep(SETPOINT_PERIOD_SEC)
                 continue
 
             if phase == "takeoff_wait":
-                if self._landed_state == LANDED_STATE_IN_AIR:
-                    self.get_logger().info("In air. Takeoff complete.")
-                    publish_phase("airborne", "Reached IN_AIR")
+                if self._landed_state != LANDED_STATE_IN_AIR:
+                    time.sleep(SETPOINT_PERIOD_SEC)
+                    continue
+
+                if self._current_altitude_m is None:
+                    publish_phase("takeoff_wait", "In air; waiting for altitude estimate")
+                    time.sleep(SETPOINT_PERIOD_SEC)
+                    continue
+
+                alt_error_m = abs(self._current_altitude_m - altitude_m)
+                if alt_error_m <= tolerance_m:
+                    self.get_logger().info(
+                        "Takeoff complete at altitude %.2f m (target %.2f m, tol %.2f m)."
+                        % (self._current_altitude_m, altitude_m, tolerance_m)
+                    )
+                    # Keep setpoints alive briefly while the mission controller hands off
+                    # to the next step, preventing OFFBOARD signal-loss failsafe.
+                    handoff_hold_sec = max(
+                        0.0,
+                        float(self.get_parameter("handoff_hold_sec").value),
+                    )
+                    if handoff_hold_sec > 0.0:
+                        publish_phase(
+                            "handoff",
+                            "Holding setpoints for %.2f s mission handoff" % handoff_hold_sec,
+                        )
+                        handoff_deadline = time.monotonic() + handoff_hold_sec
+                        while rclpy.ok() and time.monotonic() < handoff_deadline:
+                            if goal_handle.is_cancel_requested:
+                                result = OffboardTakeoff.Result()
+                                result.success = False
+                                result.message = "Cancelled"
+                                goal_handle.canceled()
+                                self.get_logger().info("Takeoff goal cancelled during handoff hold")
+                                return result
+                            self._publish_setpoint(altitude_m)
+                            time.sleep(SETPOINT_PERIOD_SEC)
+
+                    publish_phase("airborne", "Reached target altitude")
                     result = OffboardTakeoff.Result()
                     result.success = True
                     result.message = "Airborne"
                     goal_handle.succeed(result)
                     return result
-                rate.sleep()
+
+                publish_phase(
+                    "takeoff_wait",
+                    "Climbing to %.2f m (current %.2f m, |err| %.2f m)"
+                    % (altitude_m, self._current_altitude_m, alt_error_m),
+                )
+                time.sleep(SETPOINT_PERIOD_SEC)
                 continue
 
-            rate.sleep()
+            time.sleep(SETPOINT_PERIOD_SEC)
 
 
 def main(args=None):
