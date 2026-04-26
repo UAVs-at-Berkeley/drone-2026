@@ -40,7 +40,9 @@ def _goal_takeoff(node: "CentralCommandNode", step: Dict[str, Any]) -> Any:
 
 def _goal_time_trial(_node: "CentralCommandNode", step: Dict[str, Any]) -> Any:
     g = StartTimeTrial.Goal()
-    g.placeholder = int(step.get("placeholder", 0))
+    g.latitudes = step["latitudes"]
+    g.longitudes = step["longitudes"]
+    g.altitudes = step["altitudes"]
     return g
 
 
