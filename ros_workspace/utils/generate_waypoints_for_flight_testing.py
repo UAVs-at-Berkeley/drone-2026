@@ -2,7 +2,7 @@
 Generate 7 test waypoints around a central GPS coordinate.
 
 Places 7 points evenly on a circle, then perturbs each by a random offset.
-Outputs in a format ready to paste into a mission YAML file.
+Outputs ``environment.waypoints.points`` entries as ``[lat, long, alt_m]`` lines for mission YAML.
 
 Usage:
     python3 generate_waypoints_for_flight_testing.py <center_lat> <center_lon> <altitude>
@@ -62,10 +62,9 @@ def main():
     lons = [f"{wp[1]:.7f}" for wp in waypoints]
     alts = [f"{wp[2]:.1f}" for wp in waypoints]
 
-    print("Paste into your mission YAML:\n")
-    print(f"      latitudes: [{', '.join(lats)}]")
-    print(f"      longitudes: [{', '.join(lons)}]")
-    print(f"      altitudes: [{', '.join(alts)}]")
+    print("Paste under environment.waypoints.points in your mission YAML:\n")
+    for i in range(len(waypoints)):
+        print(f"      - [{lats[i]}, {lons[i]}, {alts[i]}]")
 
 
 if __name__ == "__main__":

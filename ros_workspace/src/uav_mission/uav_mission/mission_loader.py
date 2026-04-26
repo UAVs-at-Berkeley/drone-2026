@@ -1,8 +1,12 @@
 """
 Load and validate mission YAML for central_command_node.
 
+``time_trial`` uses only ``environment.waypoints.points`` (each ``[lat, long, alt_m]``);
+do not set latitudes/longitudes/altitudes on the step in YAML.
+
 Schema: top-level key ``mission`` with ``steps`` as a list. Each step is either a string
-(step id) or a mapping with required ``id`` and optional step-specific fields.
+(step id) or a mapping with required ``id`` and optional step-specific fields (except
+legacy time_trial inline arrays, which are rejected).
 
 Allowed step ids are documented in ``missions/README.md`` (installed under share).
 """
@@ -85,6 +89,33 @@ def normalize_steps(raw_steps: List[Any]) -> List[Dict[str, Any]]:
     return out
 
 
+def _expand_time_trial_from_env(steps: List[Dict[str, Any]], environment: Dict[str, Any]) -> None:
+    """
+    Time trial uses a single source of truth: ``environment.waypoints.points`` as
+    ``[lat, long, alt_m]`` triples. This copies them into the step as parallel lists for
+    ``StartTimeTrial`` goals (internal step fields only; do not
+    set those keys in mission YAML).
+    """
+    for s in steps:
+        if s.get("id") != "time_trial":
+            continue
+        for k in ("latitudes", "longitudes", "altitudes"):
+            if k in s:
+                raise ValueError(
+                    "time_trial: do not set %r in mission YAML. "
+                    "Use environment.waypoints.points only (list of [lat, long, alt_m])." % k
+                )
+        points = environment.get("waypoints", {}).get("points", [])
+        if not isinstance(points, list) or not points:
+            raise ValueError(
+                "time_trial step requires a non-empty environment.waypoints.points list "
+                "of [lat, long, alt_m] coordinates"
+            )
+        s["latitudes"] = [float(p[0]) for p in points]
+        s["longitudes"] = [float(p[1]) for p in points]
+        s["altitudes"] = [float(p[2]) for p in points]
+
+
 def load_mission_file(path: str) -> List[Dict[str, Any]]:
     mission = load_mission_data(path)
     return mission["steps"]
@@ -111,6 +142,7 @@ def load_mission_data(path: str) -> Dict[str, Any]:
     if not isinstance(raw_steps, list) or len(raw_steps) == 0:
         raise ValueError("mission.steps must be a non-empty list")
     steps = normalize_steps(raw_steps)
+    _expand_time_trial_from_env(steps, environment)
     for i, s in enumerate(steps):
         sid = s["id"]
         if sid not in ALLOWED_STEP_IDS:

@@ -1,11 +1,17 @@
 #!/usr/bin/env python3
 """
-Central Command Node — loads a mission YAML and runs steps sequentially via ROS 2 actions.
+Central Command Node — loads a mission and runs steps sequentially via ROS 2 actions.
+
+Mission data comes only from an on-disk mission YAML (``mission_file``). If the path is
+missing or the file cannot be loaded, the node runs a default single step ``takeoff``.
+For ``time_trial``, waypoints are defined only under ``environment.waypoints.points``
+in the mission file; ``mission_loader`` materializes parallel lists on the step for each
+``StartTimeTrial`` goal (do not author those keys in YAML).
 
 Publishes /central_command/mission_status (MissionStatus).
 """
 
-import json
+import os
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type
 
 import rclpy
@@ -21,6 +27,8 @@ from uav_msgs.action import (
     StartTimeTrial,
 )
 from uav_msgs.msg import MissionStatus
+
+from uav_mission.mission_loader import load_mission_data
 
 DEFAULT_TAKEOFF_ALTITUDE_M = 2.0
 
@@ -39,6 +47,7 @@ def _goal_takeoff(node: "CentralCommandNode", step: Dict[str, Any]) -> Any:
 
 
 def _goal_time_trial(_node: "CentralCommandNode", step: Dict[str, Any]) -> Any:
+    # Lists are populated by mission_loader from environment.waypoints.points (not authored in YAML).
     g = StartTimeTrial.Goal()
     g.latitudes = step["latitudes"]
     g.longitudes = step["longitudes"]
@@ -92,7 +101,8 @@ class CentralCommandNode(Node):
         super().__init__("central_command_node")
 
         self.declare_parameter("takeoff_altitude_m", DEFAULT_TAKEOFF_ALTITUDE_M)
-        self.declare_parameter("mission_steps_json", "")
+        # Absolute path to mission YAML (launch usually sets this from ``mission_file`` arg).
+        self.declare_parameter("mission_file", "")
         self.declare_parameter("step_timeout_sec", 0.0)
 
         self._status_pub = self.create_publisher(
@@ -109,6 +119,7 @@ class CentralCommandNode(Node):
         self._mission_complete = False
         self._action_clients: Dict[str, ActionClient] = {}
         self._active_goal_handle = None
+        self._goal_dispatch_in_progress = False
         self._timeout_timer = None
 
         self._poll_timer = self.create_timer(0.5, self._poll_mission)
@@ -117,25 +128,23 @@ class CentralCommandNode(Node):
         )
 
     def _load_mission_from_param(self):
-        raw_steps = str(self.get_parameter("mission_steps_json").value).strip()
-        if not raw_steps:
+        mission_path = str(self.get_parameter("mission_file").value).strip()
+        if not mission_path:
             self._steps = [{"id": "takeoff"}]
-            self.get_logger().info("mission_steps_json empty; running default [takeoff].")
+            self.get_logger().info("mission_file empty; running default [takeoff].")
+            return
+        if not os.path.isfile(mission_path):
+            self._steps = [{"id": "takeoff"}]
+            self.get_logger().error("mission_file not found: %r; running default [takeoff]." % mission_path)
             return
         try:
-            parsed = json.loads(raw_steps)
-            if not isinstance(parsed, list) or not parsed:
-                raise ValueError("mission_steps_json must decode to a non-empty list")
-            for i, step in enumerate(parsed):
-                if not isinstance(step, dict):
-                    raise ValueError("mission_steps_json[%d] must be an object" % i)
-                sid = step.get("id")
-                if not isinstance(sid, str) or not sid.strip():
-                    raise ValueError("mission_steps_json[%d].id must be a non-empty string" % i)
-            self._steps = parsed
-            self.get_logger().info("Loaded %d mission steps from launch parameters." % len(self._steps))
+            data = load_mission_data(mission_path)
+            self._steps = data["steps"]
+            self.get_logger().info(
+                "Loaded %d mission steps from mission_file: %s" % (len(self._steps), mission_path)
+            )
         except Exception as e:
-            self.get_logger().error("Failed to parse mission_steps_json: %s" % str(e))
+            self.get_logger().error("Failed to load mission_file %r: %s" % (mission_path, e))
             self._steps = [{"id": "takeoff"}]
             self.get_logger().warn("Falling back to default single step: takeoff")
 
@@ -182,7 +191,7 @@ class CentralCommandNode(Node):
             self.publish_status("mission_done", "", step_id="")
             self._poll_timer.cancel()
             return
-        if self._active_goal_handle is not None:
+        if self._active_goal_handle is not None or self._goal_dispatch_in_progress:
             return
 
         step = self._steps[self._step_index]
@@ -212,6 +221,7 @@ class CentralCommandNode(Node):
         self.publish_status("starting_%s" % step_id, "", step_id=step_id)
         self.get_logger().info("Sending goal for step %s (%d/%d)" % (step_id, self._step_index + 1, len(self._steps)))
 
+        self._goal_dispatch_in_progress = True
         send_future = client.send_goal_async(
             goal,
             feedback_callback=self._make_feedback_cb(step_id),
@@ -235,6 +245,7 @@ class CentralCommandNode(Node):
 
     def _make_goal_response_cb(self, step_id: str):
         def _cb(future):
+            self._goal_dispatch_in_progress = False
             goal_handle = future.result()
             if not goal_handle.accepted:
                 self.get_logger().error("Goal rejected for step %s" % step_id)

@@ -50,18 +50,16 @@ def mission_parameter_bundle(context) -> Dict[str, Dict[str, Any]]:
 
     return {
         "central_command": {
-            "mission_steps_json": json.dumps(steps),
+            "mission_file": mission_file,
         },
         "waypoint": {
             "waypoint_lats": wp["lats"],
             "waypoint_lons": wp["lons"],
             "waypoint_alts": wp["alts"],
         },
-        "time_trial": {
-            "waypoint_lats": wp["lats"],
-            "waypoint_lons": wp["lons"],
-            "waypoint_alts": wp["alts"],
-        },
+        # time_trial_node uses only StartTimeTrial action goals; waypoint lists come from the mission YAML
+        # (via mission_loader + goals from central_command), not ROS parameters.
+        "time_trial": {},
         "payload_drop": {
             "red_target_latitude_deg": red["lat"],
             "red_target_longitude_deg": red["lon"],

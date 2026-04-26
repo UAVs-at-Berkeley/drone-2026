@@ -108,7 +108,7 @@ class CameraNode(Node):
         self.declare_parameter("sim_drone_pose_topic", "/mavros/local_position/pose")
         self.declare_parameter("sim_world_name", "lawn")
         self.declare_parameter("sim_camera_model_name", "sim_gimbal_camera")
-        self.declare_parameter("sim_pose_update_hz", 20.0)
+        self.declare_parameter("sim_pose_update_hz", 60.0)
         self.declare_parameter("sim_mount_offset_x_m", 0.20)
         self.declare_parameter("sim_mount_offset_y_m", 0.0)
         self.declare_parameter("sim_mount_offset_z_m", -0.10)
@@ -205,7 +205,7 @@ class CameraNode(Node):
         self._sim_drone_pose_topic = self._str("sim_drone_pose_topic", "/mavros/local_position/pose")
         self._sim_world_name = self._str("sim_world_name", "default")
         self._sim_model_name = self._str("sim_camera_model_name", "sim_gimbal_camera")
-        self._sim_pose_update_hz = self._float("sim_pose_update_hz", 20.0)
+        self._sim_pose_update_hz = self._float("sim_pose_update_hz", 60.0)
         self._sim_mount_offset = (
             self._float("sim_mount_offset_x_m", 0.20),
             self._float("sim_mount_offset_y_m", 0.0),

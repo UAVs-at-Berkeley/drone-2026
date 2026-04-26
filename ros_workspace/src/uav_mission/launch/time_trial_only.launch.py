@@ -10,7 +10,7 @@ def generate_launch_description():
         default_value=PathJoinSubstitution([
             FindPackageShare('uav_mission'),
             'missions',
-            'time_trial_mission.yaml'
+            'example_mission.yaml'
         ])
     )
 

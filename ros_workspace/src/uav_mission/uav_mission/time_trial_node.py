@@ -1,3 +1,9 @@
+"""
+Time-trial action server. Waypoints are defined only as ``environment.waypoints.points``
+(``[lat, long, alt_m]``) in the mission YAML; ``mission_loader`` fills ``StartTimeTrial``
+goals and Central Command sends them here. This node does not read ROS parameters for
+waypoint lists.
+"""
 import time
 import rclpy
 from rclpy.node import Node
