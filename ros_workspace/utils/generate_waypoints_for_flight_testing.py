@@ -13,7 +13,7 @@ import random
 import sys
 
 NUM_WAYPOINTS = 7
-RADIUS_METERS = 10.0
+RADIUS_METERS = 100.0
 PERTURBATION_MAX = 5.0  # meters, uniform(0, PERTURBATION_MAX)
 
 # Approximate meters-per-degree at mid-latitudes

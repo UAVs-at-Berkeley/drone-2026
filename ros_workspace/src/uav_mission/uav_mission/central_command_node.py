@@ -9,6 +9,9 @@ in the mission file; ``mission_loader`` materializes parallel lists on the step 
 ``StartTimeTrial`` goal (do not author those keys in YAML).
 
 Publishes /central_command/mission_status (MissionStatus).
+
+Before the first mission step, subscribes to /mavros/global_position/global and calls
+``/mavros/cmd/set_home`` so the vehicle home used by AUTO.RTL matches the start pose.
 """
 
 import os
@@ -18,6 +21,9 @@ import rclpy
 from action_msgs.msg import GoalStatus
 from rclpy.action import ActionClient
 from rclpy.node import Node
+from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy
+from mavros_msgs.srv import CommandHome
+from sensor_msgs.msg import NavSatFix, NavSatStatus
 from uav_msgs.action import (
     OffboardLand,
     OffboardTakeoff,
@@ -122,6 +128,26 @@ class CentralCommandNode(Node):
         self._goal_dispatch_in_progress = False
         self._timeout_timer = None
 
+        # Latched before any mission step so AUTO.RTL returns here (not an earlier FC home).
+        self._mission_home_lat: Optional[float] = None
+        self._mission_home_lon: Optional[float] = None
+        self._mission_home_alt: Optional[float] = None
+        self._home_position_latched = False
+        self._set_home_in_flight = False
+        self._gps_sub = None
+        self._set_home_client = self.create_client(CommandHome, "/mavros/cmd/set_home")
+        gps_qos = QoSProfile(
+            depth=10,
+            reliability=ReliabilityPolicy.BEST_EFFORT,
+            history=HistoryPolicy.KEEP_LAST,
+        )
+        self._gps_sub = self.create_subscription(
+            NavSatFix,
+            "/mavros/global_position/global",
+            self._on_global_gps,
+            gps_qos,
+        )
+
         self._poll_timer = self.create_timer(0.5, self._poll_mission)
         self.get_logger().info(
             "Central Command started (%d mission steps)." % len(self._steps)
@@ -147,6 +173,45 @@ class CentralCommandNode(Node):
             self.get_logger().error("Failed to load mission_file %r: %s" % (mission_path, e))
             self._steps = [{"id": "takeoff"}]
             self.get_logger().warn("Falling back to default single step: takeoff")
+
+    def _on_set_home_result(self, future):
+        self._set_home_in_flight = False
+        try:
+            response = future.result()
+        except Exception as e:
+            self.get_logger().error("set_home call failed: %s" % e)
+            return
+        if not response.success:
+            self.get_logger().error("set_home rejected (result=%s)" % response.result)
+            return
+        self._home_position_latched = True
+        if self._gps_sub is not None:
+            self.destroy_subscription(self._gps_sub)
+            self._gps_sub = None
+        self.get_logger().info(
+            "Mission home latched: lat=%.7f lon=%.7f alt=%.2f m"
+            % (self._mission_home_lat, self._mission_home_lon, self._mission_home_alt)
+        )
+
+    def _on_global_gps(self, msg: NavSatFix):
+        if self._home_position_latched or self._set_home_in_flight:
+            return
+        if msg.status.status < NavSatStatus.STATUS_FIX:
+            return
+        if not self._set_home_client.service_is_ready():
+            return
+        self._mission_home_lat = float(msg.latitude)
+        self._mission_home_lon = float(msg.longitude)
+        self._mission_home_alt = float(msg.altitude)
+        self._set_home_in_flight = True
+        req = CommandHome.Request()
+        req.current_gps = False
+        req.yaw = 0.0
+        req.latitude = float(self._mission_home_lat)
+        req.longitude = float(self._mission_home_lon)
+        req.altitude = float(self._mission_home_alt)
+        fut = self._set_home_client.call_async(req)
+        fut.add_done_callback(self._on_set_home_result)
 
     def _get_client(self, cache_key: str, action_type: Type, server_name: str) -> ActionClient:
         if cache_key not in self._action_clients:
@@ -185,6 +250,13 @@ class CentralCommandNode(Node):
     def _poll_mission(self):
         if self._mission_failed or self._mission_complete:
             self._poll_timer.cancel()
+            return
+        if not self._home_position_latched:
+            self.publish_status(
+                "wait_mission_home",
+                "Waiting for GPS fix and /mavros/cmd/set_home to latch mission home",
+                step_id="",
+            )
             return
         if self._step_index >= len(self._steps):
             self._mission_complete = True
