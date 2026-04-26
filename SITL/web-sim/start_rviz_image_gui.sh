@@ -59,7 +59,7 @@ if [[ "${RVIZ_WAIT_FOR_IMAGE_TOPIC:-0}" == "1" ]]; then
   done
 fi
 
-if [[ "${RVIZ_USE_XTERM:-1}" == "1" ]]; then
+if [[ "${RVIZ_USE_XTERM:-0}" == "1" ]]; then
   log "launching xterm -> ${INNER} (log: $LOG)"
   exec xterm \
     -geometry '100x5+0+0' \

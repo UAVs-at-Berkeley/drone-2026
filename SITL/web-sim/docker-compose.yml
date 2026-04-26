@@ -19,7 +19,7 @@ services:
       SIM_CAMERA_MODEL_NAME: "sim_gimbal_camera"
       SIM_CAMERA_INSTANCE_NAME: "sim_gimbal_camera"
       ENABLE_RVIZ_IMAGE_GUI: "1"
-      VNC_GEOMETRY: "1920x1080"
+      VNC_GEOMETRY: "1920x2000"
     ports:
       - "5900:5900"
       - "6080:6080"
