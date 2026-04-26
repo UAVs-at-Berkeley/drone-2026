@@ -11,7 +11,7 @@ from rclpy.action import ActionServer
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 from sensor_msgs.msg import NavSatFix
-from geographic_msgs.msg import GeoPoseStamped
+from mavros_msgs.msg import GlobalPositionTarget
 from uav_msgs.action import StartTimeTrial
 from uav_mission.utils import haversine, tsp_waypoint_optimizer
 
@@ -45,8 +45,8 @@ class TimeTrialNode(Node):
         )
 
         self.setpoint_pub = self.create_publisher(
-            GeoPoseStamped,
-            '/mavros/setpoint_position/global',
+            GlobalPositionTarget,
+            '/mavros/setpoint_raw/global',
             10,
         )
 
@@ -70,11 +70,20 @@ class TimeTrialNode(Node):
             to_lat, to_lon, to_alt = waypoint[0], waypoint[1], waypoint[2]
             last_feedback_time = self.get_clock().now()
             while haversine(lat1=self.current_lat, lon1=self.current_lon, lat2=to_lat, lon2=to_lon) > 4.0:
-                to_waypoint = GeoPoseStamped()
-                to_waypoint.pose.position.latitude = to_lat
-                to_waypoint.pose.position.longitude = to_lon 
-                to_waypoint.pose.position.altitude = to_alt
-                to_waypoint.pose.orientation.w = 1.0 # I will default to this value for now
+                to_waypoint = GlobalPositionTarget()
+                to_waypoint.header.stamp = self.get_clock().now().to_msg()
+                to_waypoint.type_mask = (
+                    GlobalPositionTarget.IGNORE_VX |
+                    GlobalPositionTarget.IGNORE_VY |
+                    GlobalPositionTarget.IGNORE_VZ |
+                    GlobalPositionTarget.IGNORE_AFX |
+                    GlobalPositionTarget.IGNORE_AFY |
+                    GlobalPositionTarget.IGNORE_AFZ |
+                    GlobalPositionTarget.IGNORE_YAW |
+                    GlobalPositionTarget.IGNORE_YAW_RATE
+                )
+                to_waypoint.coordinate_frame = GlobalPositionTarget.FRAME_GLOBAL_REL_ALT
+                to_waypoint.latitude, to_waypoint.longitude, to_waypoint.altitude = to_lat, to_lon, to_alt
 
                 self.setpoint_pub.publish(to_waypoint)
                 time.sleep(0.05)

@@ -28,7 +28,7 @@ def generate_launch_description():
         executable='central_command_node',
         output='screen',
         parameters=[
-            {'mission_file': LaunchConfiguration('mission_file')},
+            {'mission_file': PathJoinSubstitution([FindPackageShare('uav_mission'), 'missions', LaunchConfiguration('mission_file')])},
             {'use_sim_time': LaunchConfiguration('use_sim_time')},
         ],
     )
