@@ -161,6 +161,13 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     else
       _PCAM_EXTRA=()
     fi
+    _UAV_PREFIX="$(ros2 pkg prefix uav_mission 2>/dev/null || true)"
+    if [[ -z "$_UAV_PREFIX" ]]; then
+      echo "start_recording.sh: ERROR — ROS package uav_mission not found. Source ros_workspace/install/setup.bash (see start_ros.sh)." >&2
+    elif [[ ! -f "$_UAV_PREFIX/share/uav_mission/launch/passive_camera.launch.py" ]]; then
+      echo "start_recording.sh: ERROR — passive_camera.launch.py not installed under uav_mission. On the Pi run:" >&2
+      echo "  cd <path-to>/ros_workspace && colcon build --packages-select uav_mission && source install/setup.bash" >&2
+    fi
     ros2 launch uav_mission passive_camera.launch.py "${_PCAM_EXTRA[@]}" &
     CAMERA_LAUNCH_PID=$!
     echo "start_recording.sh: passive camera stack (passive_camera.launch.py) PID $CAMERA_LAUNCH_PID"
