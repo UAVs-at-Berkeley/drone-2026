@@ -68,6 +68,7 @@ class TimeTrialNode(Node):
                 to_waypoint.pose.position.latitude = to_lat
                 to_waypoint.pose.position.longitude = to_lon 
                 to_waypoint.pose.position.altitude = to_alt
+                to_waypoint.pose.orientation.w = 1.0 # I will default to this value for now
 
                 self.setpoint_pub.publish(to_waypoint)
                 time.sleep(0.05)
