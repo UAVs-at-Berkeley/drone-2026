@@ -102,6 +102,7 @@ class CameraNode(Node):
         self.declare_parameter("gimbal_ip", "192.168.144.108")
         self.declare_parameter("gimbal_port", 2337)
         self.declare_parameter("gimbal_socket_timeout", 5.0)
+        self.declare_parameter("hardware_decode_hz", 1.0)
 
         # Simulation-only parameters
         self.declare_parameter("sim_image_topic", "/sim/gimbal/image_raw")
@@ -131,6 +132,8 @@ class CameraNode(Node):
         self._status_timer = None
         self._no_frame_count = 0
         self._last_no_frame_log_time = 0.0
+        self._hardware_decode_period_s = 0.0
+        self._next_hardware_decode_time = 0.0
 
         # Sim state
         self._sim_image_sub = None
@@ -173,6 +176,9 @@ class CameraNode(Node):
         gimbal_ip = self._str("gimbal_ip", "192.168.144.108")
         gimbal_port = self._int("gimbal_port", 2337)
         socket_timeout = self._float("gimbal_socket_timeout", 5.0)
+        decode_hz = self._float("hardware_decode_hz", 1.0)
+        self._hardware_decode_period_s = (1.0 / decode_hz) if decode_hz > 0.0 else 0.0
+        self._next_hardware_decode_time = 0.0
 
         if not _CV_BRIDGE_AVAILABLE:
             self.get_logger().warn("cv_bridge not available; /image_data will not be published.")
@@ -199,6 +205,10 @@ class CameraNode(Node):
                     "No frame yet from rtsp://%s:%d — /image_data will stay empty until stream is reachable."
                     % (self._gimbal.ip, self._gimbal.RTSP_PORT)
                 )
+        if decode_hz > 0.0:
+            self.get_logger().info("Hardware decode throttle enabled at %.2f Hz." % decode_hz)
+        else:
+            self.get_logger().info("Hardware decode throttle disabled (decode on every timer tick).")
 
     def _start_sim_backend(self):
         self._sim_image_topic = self._str("sim_image_topic", "/sim/gimbal/image_raw")
@@ -233,10 +243,14 @@ class CameraNode(Node):
     def _publish_image_from_hardware(self):
         if self._cv_bridge is None or self._gimbal is None:
             return
+        now = self.get_clock().now().nanoseconds * 1e-9
+        if self._hardware_decode_period_s > 0.0 and now < self._next_hardware_decode_time:
+            return
+        if self._hardware_decode_period_s > 0.0:
+            self._next_hardware_decode_time = now + self._hardware_decode_period_s
         frame = self._gimbal.most_recent_image()
         if frame is None:
             self._no_frame_count += 1
-            now = self.get_clock().now().nanoseconds * 1e-9
             if now - self._last_no_frame_log_time >= 5.0:
                 self.get_logger().warn(
                     "No image from gimbal RTSP stream (gimbal reachable? rtsp://%s:%d)."
