@@ -478,6 +478,12 @@ class GimbalCamera:
         self._lock = threading.RLock()
         self.most_recent_feedback: Optional[ResponsePacket] = None
         self._video_cap = None
+        self._latest_frame = None
+        self._frame_reader_thread = None
+        self._frame_reader_stop = threading.Event()
+        self._rtsp_read_fail_count = 0
+        self._rtsp_reopen_after_failures = 8
+        self._rtsp_last_reopen_log_time = 0.0
         self._closed = False
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         local_port = (bind_port if bind_port is not None else port + 1)
@@ -495,10 +501,12 @@ class GimbalCamera:
             self.sock.sendto(pkt.hex_bytes, (self.ip, self.port))
             data = self.sock.recv(256)
         except socket.timeout:
-            self._log.warn("OSD-off command: no response from %s (overlay may stay on)", self.ip)
+            self._log.warn(
+                "OSD-off command: no response from %s (overlay may stay on)" % (self.ip,)
+            )
             return
         except OSError as e:
-            self._log.warn("OSD-off command error: %s", e)
+            self._log.warn("OSD-off command error: %s" % (e,))
             return
         response = ResponsePacket(raw_bytes=data)
         if response.is_valid():
@@ -518,39 +526,103 @@ class GimbalCamera:
         """Lazy-init RTSP VideoCapture. Returns None if opencv unavailable, closed, or open fails."""
         if not _CV2_AVAILABLE or self._closed:
             return None
+        stale_cap = None
+        with self._lock:
+            if self._video_cap is not None and self._video_cap.isOpened():
+                return self._video_cap
+            stale_cap = self._video_cap
+            self._video_cap = None
+        if stale_cap is not None:
+            try:
+                stale_cap.release()
+            except Exception:
+                pass
+        url = "rtsp://%s:%d" % (self.ip, self.RTSP_PORT)
+        cap = cv2.VideoCapture()
+        for prop, val in [(getattr(cv2, "CAP_PROP_OPEN_TIMEOUT_MSEC", 170), 10000),
+                          (getattr(cv2, "CAP_PROP_READ_TIMEOUT_MSEC", 171), 5000)]:
+            try:
+                cap.set(prop, val)
+            except Exception:
+                pass
+        try:
+            opened = cap.open(url, getattr(cv2, "CAP_FFMPEG", 1900))
+        except Exception:
+            opened = cap.open(url)
+        if opened and cap.isOpened():
+            try:
+                cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+            except Exception:
+                pass
+            with self._lock:
+                if self._closed:
+                    try:
+                        cap.release()
+                    except Exception:
+                        pass
+                    return None
+                # Keep whichever opened capture is currently active.
+                if self._video_cap is None:
+                    self._video_cap = cap
+                    return self._video_cap
+                return self._video_cap
+        try:
+            cap.release()
+        except Exception:
+            pass
+        return None
+
+    def _reset_video_cap(self) -> None:
         with self._lock:
             if self._video_cap is not None:
-                if self._video_cap.isOpened():
-                    return self._video_cap
                 try:
                     self._video_cap.release()
                 except Exception:
                     pass
                 self._video_cap = None
-            url = "rtsp://%s:%d" % (self.ip, self.RTSP_PORT)
-            cap = cv2.VideoCapture()
-            for prop, val in [(getattr(cv2, "CAP_PROP_OPEN_TIMEOUT_MSEC", 170), 10000),
-                              (getattr(cv2, "CAP_PROP_READ_TIMEOUT_MSEC", 171), 5000)]:
-                try:
-                    cap.set(prop, val)
-                except Exception:
-                    pass
-            try:
-                opened = cap.open(url, getattr(cv2, "CAP_FFMPEG", 1900))
-            except Exception:
-                opened = cap.open(url)
-            if opened and cap.isOpened():
-                try:
-                    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-                except Exception:
-                    pass
-                self._video_cap = cap
-                return self._video_cap
-            try:
-                cap.release()
-            except Exception:
-                pass
-        return None
+
+    def _ensure_frame_reader(self) -> None:
+        if not _CV2_AVAILABLE or self._closed:
+            return
+        with self._lock:
+            if self._frame_reader_thread is not None and self._frame_reader_thread.is_alive():
+                return
+            self._frame_reader_stop.clear()
+            self._frame_reader_thread = threading.Thread(
+                target=self._frame_reader_loop,
+                daemon=True,
+                name="gimbal_rtsp_reader",
+            )
+            self._frame_reader_thread.start()
+
+    def _frame_reader_loop(self) -> None:
+        while not self._frame_reader_stop.is_set() and not self._closed:
+            cap = self._get_video_cap()
+            if cap is None:
+                self._frame_reader_stop.wait(0.2)
+                continue
+            ret, frame = cap.read()
+            if not ret or frame is None:
+                with self._lock:
+                    self._rtsp_read_fail_count += 1
+                    fail_count = self._rtsp_read_fail_count
+                if fail_count >= self._rtsp_reopen_after_failures:
+                    now = time.time()
+                    # Throttle this warning to avoid log spam when link is unhealthy.
+                    if now - self._rtsp_last_reopen_log_time >= 2.0:
+                        self._log.warn(
+                            "RTSP read failed %d times; reopening capture at rtsp://%s:%d"
+                            % (fail_count, self.ip, self.RTSP_PORT)
+                        )
+                        self._rtsp_last_reopen_log_time = now
+                    self._reset_video_cap()
+                    with self._lock:
+                        self._rtsp_read_fail_count = 0
+                self._frame_reader_stop.wait(0.02)
+                continue
+            with self._lock:
+                self._latest_frame = frame
+                self._rtsp_read_fail_count = 0
 
     def command_new_position(
         self, yaw_deg: float = 0, pitch_deg: float = 0, roll_deg: float = 0
@@ -570,10 +642,10 @@ class GimbalCamera:
             self.sock.sendto(packet.hex_bytes, (self.ip, self.port))
             data = self.sock.recv(256)
         except socket.timeout:
-            self._log.warn("Gimbal command timeout (no response from %s)", self.ip)
+            self._log.warn("Gimbal command timeout (no response from %s)" % (self.ip,))
             return None
         except OSError as e:
-            self._log.warn("Gimbal command error: %s", e)
+            self._log.warn("Gimbal command error: %s" % (e,))
             return None
         response = ResponsePacket(raw_bytes=data)
         if response.is_valid():
@@ -594,17 +666,18 @@ class GimbalCamera:
         Returns:
             BGR image (height, width, 3), or None if unavailable.
         """
-        cap = self._get_video_cap()
-        if cap is None:
-            return None
-        ret, frame = cap.read()
-        if not ret or frame is None:
-            return None
-        return frame
+        self._ensure_frame_reader()
+        with self._lock:
+            if self._latest_frame is None:
+                return None
+            return self._latest_frame.copy()
 
     def close(self) -> None:
         """Release socket and video capture. Idempotent."""
         self._closed = True
+        self._frame_reader_stop.set()
+        if self._frame_reader_thread is not None and self._frame_reader_thread.is_alive():
+            self._frame_reader_thread.join(timeout=1.0)
         with self._lock:
             if self._video_cap is not None:
                 try:
@@ -612,6 +685,7 @@ class GimbalCamera:
                 except Exception:
                     pass
                 self._video_cap = None
+            self._latest_frame = None
             try:
                 self.sock.close()
             except Exception:

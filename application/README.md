@@ -8,10 +8,11 @@ Local web app for controlling the drone without manually SSHing and running scri
 - Show current connection and flight state.
 - Edit and save mission YAML to drone mission directory.
 - **Takeoff**: full stack (`start_drone.sh <mission>`) in remote tmux.
-- **Passive record**: recording stack only (`start_recording.sh`) in the same tmux session.
+- **Passive record**: `start_recording.sh` in the same tmux session (gimbal subnet, mavros, rosbag, and `passive_camera.launch.py` for `camera_node`). Set `PASSIVE_INCLUDE_CAMERA=0` on the drone to skip the camera launch.
 - **End mission**: Ctrl+C equivalent via tmux — stops whichever mode is running (passive or full).
 - **Tmux log panel**: while connected, polls `tmux capture-pane` for read-only ROS / script output from the drone session.
 - Reconnect-aware polling/status updates after link loss.
+- **Local simulation**: Docker Compose stack (`SITL/web-sim`) plus in-browser viewer; backend controls the container via Docker (see [docs/SIMULATION.md](../docs/SIMULATION.md)).
 
 ## Project Structure
 
@@ -44,6 +45,15 @@ Local web app for controlling the drone without manually SSHing and running scri
 Default URLs:
 - Frontend: `http://localhost:5173`
 - Backend: `http://localhost:8787`
+
+## Simulation mode
+
+Use this when developing without a physical drone: PX4 SITL, Gazebo, and ROS run inside Docker while the same UI drives missions.
+
+- **Guide:** [docs/SIMULATION.md](../docs/SIMULATION.md) (architecture, `.env`, ports, troubleshooting).
+- **Quick checklist:** Docker Desktop (or Docker Engine + Compose) running; Node 20+; copy `backend/.env.example` → `backend/.env`; run `npm run dev`; open the frontend and choose **Local simulation (Docker SITL)** → **Start + Connect Simulation**.
+- Optional launcher scripts: [`scripts/run-simulation-ui/`](../scripts/run-simulation-ui/).
+- Simulation-specific variables use the `SIM_*` prefix in `backend/.env` (see `.env.example`). Physical-drone (`DRONE_*`) settings apply only in **Physical drone** mode.
 
 ## API Endpoints
 

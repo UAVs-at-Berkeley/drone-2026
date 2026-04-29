@@ -1,16 +1,29 @@
 #!/usr/bin/env python3
 """
-Central Command Node — loads a mission YAML and runs steps sequentially via ROS 2 actions.
+Central Command Node — loads a mission and runs steps sequentially via ROS 2 actions.
+
+Mission data comes only from an on-disk mission YAML (``mission_file``). If the path is
+missing or the file cannot be loaded, the node runs a default single step ``takeoff``.
+For ``time_trial``, waypoints are defined only under ``environment.waypoints.points``
+in the mission file; ``mission_loader`` materializes parallel lists on the step for each
+``StartTimeTrial`` goal (do not author those keys in YAML).
 
 Publishes /central_command/mission_status (MissionStatus).
+
+Before the first mission step, subscribes to /mavros/global_position/global and calls
+``/mavros/cmd/set_home`` so the vehicle home used by AUTO.RTL matches the start pose.
 """
 
+import os
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type
 
 import rclpy
 from action_msgs.msg import GoalStatus
 from rclpy.action import ActionClient
 from rclpy.node import Node
+from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy
+from mavros_msgs.srv import CommandHome
+from sensor_msgs.msg import NavSatFix, NavSatStatus
 from uav_msgs.action import (
     OffboardLand,
     OffboardTakeoff,
@@ -21,7 +34,7 @@ from uav_msgs.action import (
 )
 from uav_msgs.msg import MissionStatus
 
-from uav_mission.mission_loader import load_mission_file
+from uav_mission.mission_loader import load_mission_data
 
 DEFAULT_TAKEOFF_ALTITUDE_M = 2.0
 
@@ -40,8 +53,11 @@ def _goal_takeoff(node: "CentralCommandNode", step: Dict[str, Any]) -> Any:
 
 
 def _goal_time_trial(_node: "CentralCommandNode", step: Dict[str, Any]) -> Any:
+    # Lists are populated by mission_loader from environment.waypoints.points (not authored in YAML).
     g = StartTimeTrial.Goal()
-    g.placeholder = int(step.get("placeholder", 0))
+    g.latitudes = step["latitudes"]
+    g.longitudes = step["longitudes"]
+    g.altitudes = step["altitudes"]
     return g
 
 
@@ -91,6 +107,7 @@ class CentralCommandNode(Node):
         super().__init__("central_command_node")
 
         self.declare_parameter("takeoff_altitude_m", DEFAULT_TAKEOFF_ALTITUDE_M)
+        # Absolute path to mission YAML (launch usually sets this from ``mission_file`` arg).
         self.declare_parameter("mission_file", "")
         self.declare_parameter("step_timeout_sec", 0.0)
 
@@ -108,7 +125,28 @@ class CentralCommandNode(Node):
         self._mission_complete = False
         self._action_clients: Dict[str, ActionClient] = {}
         self._active_goal_handle = None
+        self._goal_dispatch_in_progress = False
         self._timeout_timer = None
+
+        # Latched before any mission step so AUTO.RTL returns here (not an earlier FC home).
+        self._mission_home_lat: Optional[float] = None
+        self._mission_home_lon: Optional[float] = None
+        self._mission_home_alt: Optional[float] = None
+        self._home_position_latched = False
+        self._set_home_in_flight = False
+        self._gps_sub = None
+        self._set_home_client = self.create_client(CommandHome, "/mavros/cmd/set_home")
+        gps_qos = QoSProfile(
+            depth=10,
+            reliability=ReliabilityPolicy.BEST_EFFORT,
+            history=HistoryPolicy.KEEP_LAST,
+        )
+        self._gps_sub = self.create_subscription(
+            NavSatFix,
+            "/mavros/global_position/global",
+            self._on_global_gps,
+            gps_qos,
+        )
 
         self._poll_timer = self.create_timer(0.5, self._poll_mission)
         self.get_logger().info(
@@ -116,18 +154,64 @@ class CentralCommandNode(Node):
         )
 
     def _load_mission_from_param(self):
-        path = str(self.get_parameter("mission_file").value).strip()
-        if path:
-            try:
-                self._steps = load_mission_file(path)
-                self.get_logger().info("Loaded mission from %s" % path)
-            except Exception as e:
-                self.get_logger().error("Failed to load mission file: %s" % str(e))
-                self._steps = [{"id": "takeoff"}]
-                self.get_logger().warn("Falling back to default single step: takeoff")
-        else:
+        mission_path = str(self.get_parameter("mission_file").value).strip()
+        if not mission_path:
             self._steps = [{"id": "takeoff"}]
             self.get_logger().info("mission_file empty; running default [takeoff].")
+            return
+        if not os.path.isfile(mission_path):
+            self._steps = [{"id": "takeoff"}]
+            self.get_logger().error("mission_file not found: %r; running default [takeoff]." % mission_path)
+            return
+        try:
+            data = load_mission_data(mission_path)
+            self._steps = data["steps"]
+            self.get_logger().info(
+                "Loaded %d mission steps from mission_file: %s" % (len(self._steps), mission_path)
+            )
+        except Exception as e:
+            self.get_logger().error("Failed to load mission_file %r: %s" % (mission_path, e))
+            self._steps = [{"id": "takeoff"}]
+            self.get_logger().warn("Falling back to default single step: takeoff")
+
+    def _on_set_home_result(self, future):
+        self._set_home_in_flight = False
+        try:
+            response = future.result()
+        except Exception as e:
+            self.get_logger().error("set_home call failed: %s" % e)
+            return
+        if not response.success:
+            self.get_logger().error("set_home rejected (result=%s)" % response.result)
+            return
+        self._home_position_latched = True
+        if self._gps_sub is not None:
+            self.destroy_subscription(self._gps_sub)
+            self._gps_sub = None
+        self.get_logger().info(
+            "Mission home latched: lat=%.7f lon=%.7f alt=%.2f m"
+            % (self._mission_home_lat, self._mission_home_lon, self._mission_home_alt)
+        )
+
+    def _on_global_gps(self, msg: NavSatFix):
+        if self._home_position_latched or self._set_home_in_flight:
+            return
+        if msg.status.status < NavSatStatus.STATUS_FIX:
+            return
+        if not self._set_home_client.service_is_ready():
+            return
+        self._mission_home_lat = float(msg.latitude)
+        self._mission_home_lon = float(msg.longitude)
+        self._mission_home_alt = float(msg.altitude)
+        self._set_home_in_flight = True
+        req = CommandHome.Request()
+        req.current_gps = False
+        req.yaw = 0.0
+        req.latitude = float(self._mission_home_lat)
+        req.longitude = float(self._mission_home_lon)
+        req.altitude = float(self._mission_home_alt)
+        fut = self._set_home_client.call_async(req)
+        fut.add_done_callback(self._on_set_home_result)
 
     def _get_client(self, cache_key: str, action_type: Type, server_name: str) -> ActionClient:
         if cache_key not in self._action_clients:
@@ -167,12 +251,19 @@ class CentralCommandNode(Node):
         if self._mission_failed or self._mission_complete:
             self._poll_timer.cancel()
             return
+        if not self._home_position_latched:
+            self.publish_status(
+                "wait_mission_home",
+                "Waiting for GPS fix and /mavros/cmd/set_home to latch mission home",
+                step_id="",
+            )
+            return
         if self._step_index >= len(self._steps):
             self._mission_complete = True
             self.publish_status("mission_done", "", step_id="")
             self._poll_timer.cancel()
             return
-        if self._active_goal_handle is not None:
+        if self._active_goal_handle is not None or self._goal_dispatch_in_progress:
             return
 
         step = self._steps[self._step_index]
@@ -202,6 +293,7 @@ class CentralCommandNode(Node):
         self.publish_status("starting_%s" % step_id, "", step_id=step_id)
         self.get_logger().info("Sending goal for step %s (%d/%d)" % (step_id, self._step_index + 1, len(self._steps)))
 
+        self._goal_dispatch_in_progress = True
         send_future = client.send_goal_async(
             goal,
             feedback_callback=self._make_feedback_cb(step_id),
@@ -225,6 +317,7 @@ class CentralCommandNode(Node):
 
     def _make_goal_response_cb(self, step_id: str):
         def _cb(future):
+            self._goal_dispatch_in_progress = False
             goal_handle = future.result()
             if not goal_handle.accepted:
                 self.get_logger().error("Goal rejected for step %s" % step_id)
@@ -285,6 +378,8 @@ class CentralCommandNode(Node):
                         step_id=step_id,
                         step_index_override=completed_idx,
                     )
+                    # Trigger the next step immediately to minimize controller handoff gaps.
+                    self._poll_mission()
             elif status == GoalStatus.STATUS_CANCELED:
                 self._mission_failed = True
                 self.publish_status("error", "Step canceled: %s" % step_id, step_id=step_id)

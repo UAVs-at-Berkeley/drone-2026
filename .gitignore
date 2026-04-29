@@ -5,3 +5,4 @@ ros_workspace/bags/
 ros_workspace/src/**/__pycache__/
 ros_workspace/src/px4_msgs
 .DS_Store
+other_project/
