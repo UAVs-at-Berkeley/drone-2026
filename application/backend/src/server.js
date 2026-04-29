@@ -330,7 +330,11 @@ app.post("/drone/connect", async (req, res) => {
       await dockerCompose.up();
       annotate("Simulation compose stack is up.");
     }
-    annotate("Attempting SSH handshake to target.");
+    annotate(
+      mode === "sim"
+        ? "Attempting simulation runtime connection (docker exec into container)."
+        : "Attempting SSH handshake to drone."
+    );
     let state;
     try {
       if (mode === "sim") {
@@ -341,7 +345,7 @@ app.post("/drone/connect", async (req, res) => {
         for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
           try {
             if (attempt > 1) {
-              annotate(`SSH retry ${attempt}/${maxAttempts}...`);
+              annotate(`Simulation runtime retry ${attempt}/${maxAttempts}...`);
             }
             state = await manager.connect(connectOptions);
             lastError = null;
@@ -387,11 +391,11 @@ app.post("/drone/connect", async (req, res) => {
       await dockerCompose.down().catch(() => {});
       await dockerCompose.build();
       await dockerCompose.up();
-      annotate("Simulation image rebuilt; retrying SSH handshake.");
+      annotate("Simulation image rebuilt; retrying simulation runtime connection.");
       state = await manager.connect({ mode, password });
-      annotate("SSH handshake succeeded after rebuild.");
+      annotate("Simulation runtime connected after rebuild.");
     }
-    annotate("SSH handshake succeeded.");
+    annotate(mode === "sim" ? "Simulation runtime connected." : "SSH handshake succeeded.");
     let composePs = state.composePs || "";
     let composeLogsTail = state.composeLogsTail || "";
     if (mode === "sim") {
@@ -433,7 +437,7 @@ app.post("/sim/shutdown", async (_req, res) => {
   try {
     annotate("Simulation shutdown requested.");
     if (manager.getState().mode === "sim" && manager.getState().sshConnected) {
-      annotate("Disconnecting SSH session from simulation target.");
+      annotate("Disconnecting simulation session (clearing backend connection state).");
       await manager.disconnect();
     }
     annotate("Running docker compose down for simulation stack.");

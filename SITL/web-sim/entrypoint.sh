@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Starts VNC (+noVNC), sshd :2222, PX4 SITL (tmux sitl_core), Gazebo GUI (sitl_gui), optional targets/RViz sessions,
+# and MAVLink toward host GCS (sitl_gcs_link). Mission flights use tmux drone_control via web backend (see start_drone.sh).
+# Key env: SITL_MAKE_TARGET (e.g. gz_x500), PX4_GZ_WORLD (e.g. lawn), GZ_PARTITION.
 set -euo pipefail
 
 SIM_USER="${SIM_USER:-sim}"
