@@ -87,4 +87,11 @@ def generate_launch_description():
                 {"publish_image_hz": LaunchConfiguration("publish_image_hz", default="30.0")},
             ],
         ),
+        Node(
+            package="uav_mission",
+            executable="payload_drop_node",
+            name="payload_drop_node",
+            output="screen",
+            parameters=[{"use_sim_time": LaunchConfiguration("use_sim_time")}],
+        )
     ])
