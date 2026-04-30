@@ -1,13 +1,14 @@
-# Goal: start autonomous time-trial routine
-uint8 placeholder
-
+# Goal: Fly through the following set of waypoints
+float64[] latitudes
+float64[] longitudes
+float64[] altitudes
 ---
 # Result
 bool success
 string message
-
+float64 total_time_seconds
 ---
 # Feedback
-float64 progress   # 0.0–1.0
-string phase
-
+uint8 current_waypoint_index
+uint8 total_waypoints
+float64 distance_to_waypoint

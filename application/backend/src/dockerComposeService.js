@@ -1,3 +1,6 @@
+/**
+ * Thin wrapper around `docker compose` for the simulation stack file from config.sim (up/down/build/logs/ps).
+ */
 import fs from "node:fs";
 import { spawn } from "node:child_process";
 

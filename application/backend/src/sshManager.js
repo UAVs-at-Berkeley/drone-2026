@@ -7,6 +7,11 @@ import SftpClient from "ssh2-sftp-client";
 import { expandHomePath, getModeConfig, normalizeMode } from "./config.js";
 import { createProgressSmoothingState } from "./startupProgress.js";
 
+/**
+ * Physical drone: real SSH (`ssh2`) + SFTP for missions.
+ * Simulation: same outward API, but commands run via `docker exec` into SIM_CONTAINER_NAME; mission YAML is staged with `docker cp`.
+ */
+
 const defaultState = {
   connectionState: "disconnected",
   sshConnected: false,
@@ -232,6 +237,9 @@ export class DroneSessionManager {
     return this.getState();
   }
 
+  /**
+   * Ensures the compose-defined container is reachable via `docker exec` (sets sshConnected for UI parity).
+   */
   async connectSimContainer() {
     if (this.state.sshConnected) {
       return this.getState();
@@ -346,6 +354,7 @@ export class DroneSessionManager {
     });
   }
 
+  /** Runs a shell command inside the simulation container as SIM_SSH_USER (default `sim`). */
   async execInSim(command) {
     const modeCfg = this.getModeConfig();
     const containerName = modeCfg.containerName || "drone-2026-sim";
@@ -411,6 +420,7 @@ export class DroneSessionManager {
   }
 
   async uploadMission(filename, yamlContent) {
+    /* Physical mode uses SFTP. Simulation writes a temp file on the host and `docker cp`s it into the container. */
     if (this.mode === "sim") {
       await this.ensureRemoteMissionDir();
       const modeCfg = this.getModeConfig();

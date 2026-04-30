@@ -27,14 +27,27 @@ Use the same `<mesh>` block in both collision and visual elements.
 
 ## Randomized placement
 
-The container startup can spawn `custom_target` at a random position each run.
+The container startup can spawn one or more target models at random positions each run.
 Configure with environment variables in `SITL/web-sim/docker-compose.yml`:
 
 - `ENABLE_RANDOM_TARGET` (`1` to enable, default)
+- `TARGET_MODEL_LIST` (comma-separated models to spawn, each with independent random placement)
 - `TARGET_RANDOM_RADIUS_M` (max radius from origin in meters)
 - `TARGET_MIN_RADIUS_M` (min radius from origin in meters)
 - `TARGET_Z_M` (spawn height in meters)
 - `TARGET_RANDOM_YAW` (`1` random yaw, `0` fixed yaw)
+
+By default, web SITL uses:
+
+- `custom_target`
+- `custom_target_2`
+- `targetNumber1` through `targetNumber10`
+
+Each model in `TARGET_MODEL_LIST` is spawned by the same annulus-uniform heuristic (same logic as
+`spawn_random_target.sh` for the original target), so every target gets independent randomized
+position and yaw on startup.
+
+`TARGET_MODEL_NAME` / `TARGET_SDF_PATH` are still supported as single-target fallback env vars.
 
 ## Sim gimbal camera model
 

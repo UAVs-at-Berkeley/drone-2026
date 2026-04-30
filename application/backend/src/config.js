@@ -22,6 +22,11 @@ const DEFAULT_SIM_MISSION_DIR =
   "/home/sim/drone_workspace/drone-2026/ros_workspace/src/uav_mission/missions";
 const DEFAULT_SIM_ROS_INSTALL =
   "/home/sim/drone_workspace/drone-2026/ros_workspace/install/setup.bash";
+/**
+ * Default simulation Compose file: `<repo>/SITL/web-sim/docker-compose.yml` where repo is three levels above `backend/src`.
+ * Set SIM_COMPOSE_FILE if your checkout path differs.
+ * Keys named SIM_SSH_* mirror physical-drone env naming; the backend drives simulation via Docker (`docker exec` / `docker cp`), not a TCP SSH session — see sshManager.js.
+ */
 const DEFAULT_SIM_COMPOSE_FILE = path.join(REPO_ROOT, "SITL", "web-sim", "docker-compose.yml");
 const DEFAULT_SIM_NOVNC_ORIGIN = "http://127.0.0.1:6080/vnc.html?autoconnect=1&resize=scale&path=websockify";
 

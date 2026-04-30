@@ -1,7 +1,20 @@
 import yaml from "js-yaml";
 import { z } from "zod";
 
+const coordinateSchema = z.tuple([z.number(), z.number(), z.number()]);
+
 const missionSchema = z.object({
+  environment: z.object({
+    Geofence: z.object({
+      points: z.array(coordinateSchema),
+    }),
+    waypoints: z.object({
+      points: z.array(coordinateSchema),
+    }),
+    red_target: coordinateSchema,
+    x_target: coordinateSchema,
+    number_target: coordinateSchema,
+  }),
   mission: z.object({
     steps: z.array(z.union([z.string(), z.record(z.any())])).min(1),
   }),
@@ -22,7 +35,11 @@ export function validateMissionYaml(yamlText) {
   }
   const result = missionSchema.safeParse(parsed);
   if (!result.success) {
-    return { ok: false, message: "YAML must include mission.steps with at least one entry." };
+    return {
+      ok: false,
+      message:
+        "YAML must include environment.{Geofence.points, waypoints.points, red_target, x_target, number_target} with [lat,long,alt_m] coordinates and mission.steps.",
+    };
   }
   return { ok: true, parsed };
 }

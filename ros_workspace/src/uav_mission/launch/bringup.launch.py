@@ -13,6 +13,8 @@ from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 
+from uav_mission.mission_launch_utils import mission_parameter_bundle
+
 
 def generate_launch_description():
     return LaunchDescription([
@@ -82,45 +84,7 @@ def generate_launch_description():
             output="screen",
             parameters=[{"use_sim_time": LaunchConfiguration("use_sim_time")}],
         ),
-        Node(
-            package="uav_mission",
-            executable="central_command_node",
-            name="central_command_node",
-            output="screen",
-            parameters=[
-                {"use_sim_time": LaunchConfiguration("use_sim_time")},
-                {"takeoff_altitude_m": LaunchConfiguration("takeoff_altitude_m")},
-                {"mission_file": LaunchConfiguration("mission_file")},
-            ],
-        ),
-        Node(
-            package="uav_mission",
-            executable="time_trial_node",
-            name="time_trial_node",
-            output="screen",
-            parameters=[{"use_sim_time": LaunchConfiguration("use_sim_time")}],
-        ),
-        Node(
-            package="uav_mission",
-            executable="object_localization_node",
-            name="object_localization_node",
-            output="screen",
-            parameters=[{"use_sim_time": LaunchConfiguration("use_sim_time")}],
-        ),
-        Node(
-            package="uav_mission",
-            executable="waypoint_node",
-            name="waypoint_node",
-            output="screen",
-            parameters=[{"use_sim_time": LaunchConfiguration("use_sim_time")}],
-        ),
-        Node(
-            package="uav_mission",
-            executable="payload_drop_node",
-            name="payload_drop_node",
-            output="screen",
-            parameters=[{"use_sim_time": LaunchConfiguration("use_sim_time")}],
-        ),
+        OpaqueFunction(function=_mission_nodes),
         Node(
             package="uav_mission",
             executable="mapping_node",
@@ -183,4 +147,63 @@ def _sim_gimbal_image_bridge(context, *args, **kwargs):
             ],
             additional_env={"GZ_PARTITION": part},
         )
+    ]
+
+
+def _mission_nodes(context, *args, **kwargs):
+    use_sim_time = LaunchConfiguration("use_sim_time")
+    takeoff_altitude_m = LaunchConfiguration("takeoff_altitude_m")
+    bundle = mission_parameter_bundle(context)
+    return [
+        Node(
+            package="uav_mission",
+            executable="central_command_node",
+            name="central_command_node",
+            output="screen",
+            parameters=[
+                {"use_sim_time": use_sim_time},
+                {"takeoff_altitude_m": takeoff_altitude_m},
+                bundle["central_command"],
+            ],
+        ),
+        Node(
+            package="uav_mission",
+            executable="time_trial_node",
+            name="time_trial_node",
+            output="screen",
+            parameters=[
+                {"use_sim_time": use_sim_time},
+                bundle["time_trial"],
+            ],
+        ),
+        Node(
+            package="uav_mission",
+            executable="object_localization_node",
+            name="object_localization_node",
+            output="screen",
+            parameters=[
+                {"use_sim_time": use_sim_time},
+                bundle["object_localization"],
+            ],
+        ),
+        Node(
+            package="uav_mission",
+            executable="waypoint_node",
+            name="waypoint_node",
+            output="screen",
+            parameters=[
+                {"use_sim_time": use_sim_time},
+                bundle["waypoint"],
+            ],
+        ),
+        Node(
+            package="uav_mission",
+            executable="payload_drop_node",
+            name="payload_drop_node",
+            output="screen",
+            parameters=[
+                {"use_sim_time": use_sim_time},
+                bundle["payload_drop"],
+            ],
+        ),
     ]

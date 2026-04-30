@@ -25,7 +25,7 @@ function buildProgress(setters) {
 }
 
 /**
- * sitl_core pane after SSH connect: matches `make px4_sitl` (old), `cmake --build build/... -- gz_*` (SITL/web-sim/entrypoint.sh),
+ * sitl_core pane once backend reaches simulation runtime: matches `make px4_sitl` (old), `cmake --build build/... -- gz_*` (SITL/web-sim/entrypoint.sh),
  * Ninja build lines, and no-rebuild "Built target" runs.
  */
 const SITL_CORE_BOOT_MILESTONE =
@@ -286,8 +286,8 @@ export function estimateStartupProgress({
   const simSetupProgressRaw = buildProgress([
     [connectionState === "connecting", [8, "Connecting", "Connecting to simulation target."]],
     [has(connectTraceText, /starting simulation compose stack/i), [15, "Starting container", "Launching simulation Docker service."]],
-    [has(composeLogsText, /new xtigervnc server|server listening on .* port 2222/i), [30, "Container services", "VNC and SSH services are up."]],
-    [connected && mode === "sim", [40, "SSH connected", "Backend connected to simulation runtime."]],
+    [has(composeLogsText, /new xtigervnc server|server listening on .* port 2222/i), [30, "Container services", "VNC and sshd are listening inside the container."]],
+    [connected && mode === "sim", [40, "Simulation connected", "Backend connected to simulation runtime."]],
     [has(simBootLogText, SITL_CORE_BOOT_MILESTONE), [55, "PX4 building", "Compiling/starting PX4 SITL."]],
     [has(simBootLogText, /gazebo world is ready|waiting for gazebo world/i), [68, "Gazebo server", "Gazebo world/server startup in progress."]],
     [has(simBootLogText, /spawning gazebo model|world:\s*default,\s*model:\s*x500_0/i), [82, "Model spawn", "Spawning x500 model into Gazebo world."]],
@@ -311,7 +311,14 @@ export function estimateStartupProgress({
     [has(missionLogText, /offboard takeoff server ready|fc connected\. priming|prime done/i), [78, "Takeoff priming", "Offboard takeoff action is priming setpoints."]],
     [has(missionLogText, /offboard enabled|vehicle armed|climbing to altitude|OFFBOARD and armed\. Climbing\./i), [90, "Drone climbing", "Vehicle armed and climbing."]],
     [has(missionLogText, /in air\. takeoff complete|Reached IN_AIR|Airborne/i), [100, "Takeoff complete", "Drone is airborne.", true]],
-    [runMode === "passive" && has(missionLogText, /recording to .*bag|start_recording\.sh:/i), [100, "Passive recording active", "Recording stack is fully active.", true]],
+    [
+      runMode === "passive" &&
+        has(
+          missionLogText,
+          /passive camera stack|recording to .*bag|start_recording\.sh:|\[camera_node/i
+        ),
+      [100, "Passive recording active", "Recording and camera stack active.", true],
+    ],
   ]);
 
   let simSetupProgress = simSetupProgressRaw;

@@ -1,6 +1,10 @@
 # drone-2026
 
-##SITL (software in the loop simulator)
+> **Using the web control app with Docker simulation?** Prefer **[`web-sim/`](web-sim/)** (Compose stack used by the backend). Full instructions: **[docs/SIMULATION.md](../docs/SIMULATION.md)**.
+>
+> The steps below describe the **legacy** **`simulator/`** image (manual `docker build` / interactive container workflow). That path is separate from `web-sim` used by `npm run dev` + **Local simulation** in the UI.
+
+## SITL (software-in-the-loop simulator)
 
 How to download/install run the simulator package docker image:
 1. Make sure you have docker installed on your computer
