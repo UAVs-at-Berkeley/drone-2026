@@ -64,9 +64,9 @@ def _order_corners(pts):
 
 def corners_from_box(box):
     """
-    Return the 4 corners of a detection bounding box for locate_square().
+    Return the 4 corners of a bounding box for locate_square().
 
-    box: array-like [x1, y1, x2, y2] in pixel coordinates (xyxy format from RF-DETR)
+    box: array-like [x1, y1, x2, y2] in pixel coordinates (xyxy format)
     Returns: np.float32 (4, 2) — [TL, TR, BR, BL]
     """
     x1, y1, x2, y2 = box
@@ -111,8 +111,7 @@ def corners_from_contour(points):
     Approximates the contour to a quadrilateral; falls back to the minimum-area
     bounding rectangle when approxPolyDP does not yield exactly 4 vertices.
 
-    points: (N, 2) numpy array of pixel coordinates — result.masks.xy[i] from YOLO,
-            or a list of (x, y) tuples from a supervision Detection.points contour
+    points: (N, 2) numpy array of pixel coordinates, e.g. from contour_from_saturation()
     Returns: np.float32 (4, 2) — [TL, TR, BR, BL], or None if the contour is empty
     """
     contour = np.array(points, dtype=np.float32).reshape(-1, 1, 2)
@@ -135,8 +134,8 @@ class CentralDetectionNode(Node):
     def __init__(self):
         super().__init__("central_detection_node")
 
-        self.declare_parameter("model_weights", "yolosegweights.pt")
-        self._model = YOLO(self.get_parameter("model_weights").value)
+        self.declare_parameter("model", "./yolo26s-obj_ncnn_model")
+        self._model = YOLO(self.get_parameter("model").value)
         self._bridge = CvBridge()
         self._busy = False
 
@@ -229,17 +228,17 @@ class CentralDetectionNode(Node):
             det_array.header = msg.header
 
             for result in results:
-                if result.masks is None:
-                    continue
-                for i, contour_xy in enumerate(result.masks.xy):
+                for i, box in enumerate(result.boxes.xyxy):
                     type_name = result.names[int(result.boxes.cls[i])]
                     side_m = SIDE_LENGTH_M.get(type_name)
                     if side_m is None:
                         continue
-                    sat_contour = contour_from_saturation(frame, result.boxes.xyxy[i])
-                    active_contour = sat_contour if sat_contour is not None else np.array(contour_xy, dtype=np.float32)
 
-                    corners = corners_from_contour(active_contour)
+                    sat_contour = contour_from_saturation(frame, box)
+                    if sat_contour is not None:
+                        corners = corners_from_contour(sat_contour)
+                    else:
+                        corners = corners_from_box(box)
                     if corners is None:
                         continue
 
@@ -286,9 +285,9 @@ class CentralDetectionNode(Node):
 
         cam_space = roll_mat @ pitch_mat @ yaw_mat #TODO: figure out Euler angle order for gimbal reporting, not urgent (doesn't matter if we don't roll camera)
 
-        cam_rot_mat = cam_space @ np.array([[0, 0, 1],
-                                [-1, 0, 0],
-                                [0, 1, 0]]) # Camera-relative locations use X right, Y up, Z forward. Switch to X forward, Y left, Z up.
+        cam_rot_mat = cam_space @ np.array([[ 0, 0, -1],
+                                         [ 1, 0,  0],
+                                         [ 0, 1,  0]]) # Camera X right, Y up, Z forward → FLU. Camera is yaw-180° (faces inward): cam-right→+Y, cam-fwd→-X.
 
     @staticmethod
     def locate_point(p_x, p_y, h):
