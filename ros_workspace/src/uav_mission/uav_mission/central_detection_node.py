@@ -17,6 +17,8 @@ from sensor_msgs.msg import Image, NavSatFix
 from std_msgs.msg import Float64
 from uav_msgs.msg import GimbalStatus, DetectionArray, Detection
 
+import threading
+
 import numpy as np
 import cv2 as cv
 from cv_bridge import CvBridge
@@ -39,8 +41,6 @@ K = np.array([[f_x, 0, c_x],
               [0, 0, 1]])
 K_inv = np.linalg.inv(K)
 
-cam_rot_mat = np.eye(3)
-
 EARTH_RADIUS_M = 6_378_137.0  # WGS-84 equatorial radius
 
 # Side length in metres for each detectable object type.
@@ -55,11 +55,18 @@ SIDE_LENGTH_M = {
 
 
 def _order_corners(pts):
-    """Sort 4 points into [TL, TR, BR, BL] order expected by locate_square()."""
-    pts = pts[np.argsort(pts[:, 1])]
-    top = pts[:2][np.argsort(pts[:2, 0])]
-    bot = pts[2:][np.argsort(pts[2:, 0])]
-    return np.array([top[0], top[1], bot[1], bot[0]], dtype=np.float32)
+    """Sort 4 points into [TL, TR, BR, BL] order expected by locate_square().
+
+    Sorts by angle from the centroid (guaranteed unique CW ordering for any
+    convex quad), then rolls so the corner with the smallest x+y is first.
+    This is stable for any rotation and any aspect ratio, unlike a Y-sort or
+    a pure x+y approach which both have degenerate cases.
+    """
+    center = pts.mean(axis=0)
+    angles = np.arctan2(pts[:, 1] - center[1], pts[:, 0] - center[0])
+    pts = pts[np.argsort(angles)]
+    tl = np.argmin(pts[:, 0] + pts[:, 1])
+    return np.roll(pts, -tl, axis=0)
 
 
 def corners_from_box(box):
@@ -138,6 +145,9 @@ class CentralDetectionNode(Node):
         self._model = YOLO(self.get_parameter("model").value)
         self._bridge = CvBridge()
         self._busy = False
+
+        self._cam_rot_mat = np.eye(3)
+        self._cam_rot_lock = threading.Lock()
 
         # Image inference runs exclusively; state callbacks run concurrently with it.
         self._inference_group = MutuallyExclusiveCallbackGroup()
@@ -224,6 +234,9 @@ class CentralDetectionNode(Node):
 
             results = self._model.predict(frame, verbose=False)
 
+            with self._cam_rot_lock:
+                cam_rot = self._cam_rot_mat.copy()
+
             det_array = DetectionArray()
             det_array.header = msg.header
 
@@ -235,14 +248,13 @@ class CentralDetectionNode(Node):
                         continue
 
                     sat_contour = contour_from_saturation(frame, box)
-                    if sat_contour is not None:
-                        corners = corners_from_contour(sat_contour)
-                    else:
-                        corners = corners_from_box(box)
+                    if sat_contour is None:
+                        continue
+                    corners = corners_from_contour(sat_contour)
                     if corners is None:
                         continue
 
-                    success, rmat, tvec = CentralDetectionNode.locate_square(corners, side_m)
+                    success, rmat, tvec = CentralDetectionNode.locate_square(corners, side_m, cam_rot)
                     if not success:
                         continue
 
@@ -269,7 +281,6 @@ class CentralDetectionNode(Node):
             self._busy = False
 
     def _gimbal_callback(self, msg: GimbalStatus):
-        global cam_rot_mat
         roll = np.radians(msg.roll_deg)
         pitch = np.radians(msg.pitch_deg)
         yaw = np.radians(msg.yaw_deg)
@@ -285,43 +296,57 @@ class CentralDetectionNode(Node):
 
         cam_space = roll_mat @ pitch_mat @ yaw_mat #TODO: figure out Euler angle order for gimbal reporting, not urgent (doesn't matter if we don't roll camera)
 
-        cam_rot_mat = cam_space @ np.array([[ 0, 0, -1],
-                                         [ 1, 0,  0],
-                                         [ 0, 1,  0]]) # Camera X right, Y up, Z forward → FLU. Camera is yaw-180° (faces inward): cam-right→+Y, cam-fwd→-X.
+        new_rot = cam_space @ np.array([[ 0, 0, -1],
+                                        [ 1, 0,  0],
+                                        [ 0, 1,  0]]) # Camera X right, Y up, Z forward → FLU. Camera is yaw-180° (faces inward): cam-right→+Y, cam-fwd→-X.
+        with self._cam_rot_lock:
+            self._cam_rot_mat = new_rot
 
     @staticmethod
-    def locate_point(p_x, p_y, h):
+    def locate_point(p_x, p_y, h, cam_rot):
 
         ray = K_inv.dot(np.array([p_x, p_y, 1.0])) # 1-meter DEPTH (not length) ray
-        g_pos = cam_rot_mat @ ray
+        g_pos = cam_rot @ ray
         g_pos *= -h / g_pos[2]
 
         return g_pos
 
     @staticmethod
-    def locate_square(points, side_length):
+    def locate_square(points, side_length, cam_rot):
 
         dist_coeffs = np.zeros((4, 1)) #assume no distortion
 
-        target_points = np.array([[-side_length / 2, side_length / 2, 0.0], 
-                              [side_length / 2, side_length / 2, 0.0], 
+        target_points = np.array([[-side_length / 2, side_length / 2, 0.0],
+                              [side_length / 2, side_length / 2, 0.0],
                               [side_length / 2, -side_length / 2, 0.0],
                               [-side_length / 2, -side_length / 2, 0.0]])
 
-        success, rvec, tvec = cv.solvePnP(
+        # solvePnPGeneric returns both IPPE solutions; we pick the one where the
+        # marker is in front of the camera (camera-frame Z > 0).  solvePnP would
+        # silently pick by reprojection error alone, which is unreliable when both
+        # solutions reproject similarly (common for near-nadir views).
+        retval, rvecs, tvecs, _ = cv.solvePnPGeneric(
                                 target_points,
                                 points,
                                 K,
                                 dist_coeffs,
-                                flags=cv.SOLVEPNP_IPPE_SQUARE 
+                                flags=cv.SOLVEPNP_IPPE_SQUARE
                             )
 
-        rmat, _ = cv.Rodrigues(rvec) # solvepnp returns a rotation vector, not a matrix
-        rot = cam_rot_mat  # snapshot once so both multiplies use the same matrix
-        rmat = rot @ rmat
-        tvec = rot @ tvec
+        if retval == 0:
+            return False, None, None
 
-        return success, rmat, tvec
+        rvec, tvec = rvecs[0], tvecs[0]
+        for i in range(retval):
+            if tvecs[i][2, 0] > 0:
+                rvec, tvec = rvecs[i], tvecs[i]
+                break
+
+        rmat, _ = cv.Rodrigues(rvec) # solvepnp returns a rotation vector, not a matrix
+        rmat = cam_rot @ rmat
+        tvec = cam_rot @ tvec
+
+        return True, rmat, tvec
 
     def square_world_pose(self, rmat, tvec):
         """

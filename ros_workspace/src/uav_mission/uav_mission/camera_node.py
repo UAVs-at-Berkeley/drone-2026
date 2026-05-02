@@ -228,7 +228,7 @@ class CameraNode(Node):
             Image,
             self._sim_image_topic,
             self._sim_image_callback,
-            10,
+            qos_profile_sensor_data,
         )
         self._sim_pose_sub = self.create_subscription(
             PoseStamped,

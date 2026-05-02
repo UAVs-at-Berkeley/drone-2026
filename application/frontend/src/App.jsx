@@ -569,7 +569,8 @@ export default function App() {
             title="Simulation noVNC stream"
             src={resolvedSimViewerUrl}
             className="sim-viewer"
-            allow="clipboard-read; clipboard-write"
+            allow="clipboard-read; clipboard-write; fullscreen"
+            allowFullScreen
           />
         </section>
       ) : null}

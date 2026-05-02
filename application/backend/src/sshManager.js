@@ -490,7 +490,7 @@ export class DroneSessionManager {
   async startPassiveRecording() {
     const modeCfg = this.getModeConfig();
     const sessionName = modeCfg.tmuxSession;
-    const startCommand = `${this.buildInlineEnv(modeCfg)}${modeCfg.recordingScriptPath}`.replace(/'/g, "'\\''");
+    const startCommand = `${this.buildInlineEnv(modeCfg, { includeMissionArgs: true })}${modeCfg.recordingScriptPath}`.replace(/'/g, "'\\''");
     await this.exec(`tmux kill-session -t ${sessionName} 2>/dev/null || true`);
     await this.exec(`tmux new-session -d -s ${sessionName} '${startCommand}'`);
     this.setState({
