@@ -12,6 +12,8 @@ source "$_START_REC_DIR/start_ros.sh"
 #
 # Bag env (optional): BAG_STORAGE=sqlite3|mcap (default sqlite3), BAG_START_CHECK_DELAY (seconds).
 # Camera (passive only): PASSIVE_INCLUDE_CAMERA, PASSIVE_CAMERA_EXTRA_ARGS (e.g. gimbal_ip:=192.168.144.108).
+# When MAVROS_FCU_URL looks like SITL (UDP :14540) and no camera_backend:=… is given, append camera_backend:=sim
+# so /image_data comes from Gazebo (see passive_camera.launch.py). Disable with PASSIVE_CAMERA_SIM_AUTO_BACKEND=0.
 # See docs/rosbag2-recording-notes.md if bags are empty or lack metadata.yaml.
 #
 # Usage:
@@ -163,6 +165,20 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
       _PCAM_EXTRA=( ${_PCAM_ARGS} )
     else
       _PCAM_EXTRA=()
+    fi
+    _passive_has_cam_backend=0
+    for _a in "${_PCAM_EXTRA[@]}"; do
+      case "$_a" in
+        camera_backend:=*) _passive_has_cam_backend=1 ;;
+      esac
+    done
+    if [[ ${_passive_has_cam_backend:-0} -eq 0 ]] \
+      && [[ "${PASSIVE_CAMERA_SIM_AUTO_BACKEND:-1}" != "0" ]] \
+      && [[ "${PASSIVE_CAMERA_SIM_AUTO_BACKEND:-1}" != "false" ]] \
+      && [[ "${PASSIVE_CAMERA_SIM_AUTO_BACKEND:-1}" != "no" ]] \
+      && [[ "${MAVROS_FCU_URL:-}" == *14540* ]]; then
+      _PCAM_EXTRA+=(camera_backend:=sim)
+      echo "start_recording.sh: SITL MAVROS URL detected; passive camera using camera_backend:=sim (Gazebo → /image_data)."
     fi
     _UAV_PREFIX="$(ros2 pkg prefix uav_mission 2>/dev/null || true)"
     if [[ -z "$_UAV_PREFIX" ]]; then

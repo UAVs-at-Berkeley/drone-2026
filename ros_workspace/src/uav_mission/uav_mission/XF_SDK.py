@@ -425,11 +425,11 @@ null_packet = HostPacket(hex_string="A8E5480001000000000000000000000000000000000
 #This is hard-coded for the Z1 mini gimbal.
 
 
-def _osd_off_host_packet() -> HostPacket:
-    """GCU Private Protocol: order 0x73, TT 0x00 — disable on-screen overlay (per XF appendix)."""
+def _gcu_aux_command_host_packet(command: int, param_tt: bytes = b"\x00") -> HostPacket:
+    """Shared layout for appendix one-byte-TT orders (e.g. OSD 0x73, target detection 0x75)."""
     return HostPacket(
-        command=0x73,
-        command_param=b"\x00",
+        command=command,
+        command_param=param_tt,
         protocol_version=2,
         roll=0,
         pitch=0,
@@ -445,6 +445,16 @@ def _osd_off_host_packet() -> HostPacket:
         GNSS_week=0,
         rel_height=0,
     )
+
+
+def _osd_off_host_packet() -> HostPacket:
+    """GCU Private Protocol: order 0x73, TT 0x00 — OSD off (XF GCU appendix)."""
+    return _gcu_aux_command_host_packet(0x73, b"\x00")
+
+
+def _target_detection_off_host_packet() -> HostPacket:
+    """GCU Private Protocol: order 0x75, TT 0x00 — target detection off (XF GCU appendix)."""
+    return _gcu_aux_command_host_packet(0x75, b"\x00")
 
 
 class GimbalCamera:
@@ -492,28 +502,32 @@ class GimbalCamera:
         self._send_osd_off_at_init()
 
     def _send_osd_off_at_init(self) -> None:
-        """Send null + OSD-off (0x73 0x00) so RTSP frames omit the GCU overlay when supported."""
+        """Send null, OSD-off (0x73 0x00), and target-detection off (0x75 0x00) per GCU appendix."""
         if self._closed:
             return
-        pkt = _osd_off_host_packet()
         try:
             self.sock.sendto(null_packet.hex_bytes, (self.ip, self.port))
-            self.sock.sendto(pkt.hex_bytes, (self.ip, self.port))
-            data = self.sock.recv(256)
+            for pkt in (_osd_off_host_packet(), _target_detection_off_host_packet()):
+                self.sock.sendto(pkt.hex_bytes, (self.ip, self.port))
+                data = self.sock.recv(256)
+                response = ResponsePacket(raw_bytes=data)
+                if response.is_valid():
+                    with self._lock:
+                        self.most_recent_feedback = response
+                else:
+                    self._log.warn(
+                        "GCU OSD / target-detection command: invalid response (CRC) from %s"
+                        % (self.ip,)
+                    )
         except socket.timeout:
             self._log.warn(
-                "OSD-off command: no response from %s (overlay may stay on)" % (self.ip,)
+                "GCU OSD / target-detection off: no response from %s (overlay or detection may stay on)"
+                % (self.ip,)
             )
             return
         except OSError as e:
-            self._log.warn("OSD-off command error: %s" % (e,))
+            self._log.warn("GCU OSD / target-detection off: %s" % (e,))
             return
-        response = ResponsePacket(raw_bytes=data)
-        if response.is_valid():
-            with self._lock:
-                self.most_recent_feedback = response
-        else:
-            self._log.warn("OSD-off command: invalid GCU response (CRC)")
 
     def __enter__(self) -> "GimbalCamera":
         return self

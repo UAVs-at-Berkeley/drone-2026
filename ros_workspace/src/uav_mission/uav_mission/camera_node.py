@@ -14,9 +14,25 @@ import time
 import rclpy
 from geometry_msgs.msg import PoseStamped
 from rclpy.action import ActionServer
+from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
+from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.parameter import parameter_value_to_python
-from rclpy.qos import qos_profile_sensor_data
+from rclpy.qos import (
+    DurabilityPolicy,
+    HistoryPolicy,
+    QoSProfile,
+    ReliabilityPolicy,
+    qos_profile_sensor_data,
+)
+
+# ros_gz_image publishes RELIABLE Image; BEST_EFFORT loses oversized frames with typical DDS configs.
+_QOS_SIM_BRIDGE_IMAGE = QoSProfile(
+    depth=5,
+    reliability=ReliabilityPolicy.RELIABLE,
+    durability=DurabilityPolicy.VOLATILE,
+    history=HistoryPolicy.KEEP_LAST,
+)
 from sensor_msgs.msg import Image
 from std_msgs.msg import Header
 from uav_msgs.action import MoveCamera
@@ -88,10 +104,9 @@ class CameraNode(Node):
     def __init__(self):
         super().__init__("camera_node")
 
-        # Shared interfaces
+        # Shared interfaces (ActionServer created after backend/callback groups are known)
         self._image_pub = self.create_publisher(Image, "/image_data", 10)
         self._status_pub = self.create_publisher(GimbalStatus, "/gimbal_status", 10)
-        self._action_server = ActionServer(self, MoveCamera, "/camera/move", self._execute_callback)
 
         # Parameters
         self.declare_parameter("camera_backend", "hardware")
@@ -109,7 +124,7 @@ class CameraNode(Node):
         self.declare_parameter("sim_drone_pose_topic", "/mavros/local_position/pose")
         self.declare_parameter("sim_world_name", "lawn")
         self.declare_parameter("sim_camera_model_name", "sim_gimbal_camera")
-        self.declare_parameter("sim_pose_update_hz", 60.0)
+        self.declare_parameter("sim_pose_update_hz", 15.0)
         self.declare_parameter("sim_mount_offset_x_m", 0.20)
         self.declare_parameter("sim_mount_offset_y_m", 0.0)
         self.declare_parameter("sim_mount_offset_z_m", -0.10)
@@ -122,6 +137,22 @@ class CameraNode(Node):
                 "Unknown camera_backend=%s; falling back to hardware." % self._backend
             )
             self._backend = "hardware"
+
+        self._sim_net_cb_group = None
+        self._sim_img_cb_group = None
+        action_cb_group = None
+        if self._backend == "sim":
+            self._sim_net_cb_group = MutuallyExclusiveCallbackGroup()
+            self._sim_img_cb_group = MutuallyExclusiveCallbackGroup()
+            action_cb_group = self._sim_net_cb_group
+
+        self._action_server = ActionServer(
+            self,
+            MoveCamera,
+            "/camera/move",
+            self._execute_callback,
+            callback_group=action_cb_group,
+        )
 
         self._publish_hz = self._float("publish_image_hz", 30.0)
         self._status_hz = self._float("publish_status_hz", 10.0)
@@ -153,7 +184,12 @@ class CameraNode(Node):
             self._start_sim_backend()
 
         if self._status_hz > 0:
-            self._status_timer = self.create_timer(1.0 / self._status_hz, self._publish_gimbal_status)
+            _status_cb_group = self._sim_net_cb_group if self._backend == "sim" else None
+            self._status_timer = self.create_timer(
+                1.0 / self._status_hz,
+                self._publish_gimbal_status,
+                callback_group=_status_cb_group,
+            )
 
         self.get_logger().info(
             "Camera node started (backend=%s, image %.1f Hz, status %.1f Hz)."
@@ -215,7 +251,7 @@ class CameraNode(Node):
         self._sim_drone_pose_topic = self._str("sim_drone_pose_topic", "/mavros/local_position/pose")
         self._sim_world_name = self._str("sim_world_name", "default")
         self._sim_model_name = self._str("sim_camera_model_name", "sim_gimbal_camera")
-        self._sim_pose_update_hz = self._float("sim_pose_update_hz", 60.0)
+        self._sim_pose_update_hz = self._float("sim_pose_update_hz", 15.0)
         self._sim_mount_offset = (
             self._float("sim_mount_offset_x_m", 0.20),
             self._float("sim_mount_offset_y_m", 0.0),
@@ -228,17 +264,23 @@ class CameraNode(Node):
             Image,
             self._sim_image_topic,
             self._sim_image_callback,
-            qos_profile_sensor_data,
+            _QOS_SIM_BRIDGE_IMAGE,
+            callback_group=self._sim_img_cb_group,
         )
         self._sim_pose_sub = self.create_subscription(
             PoseStamped,
             self._sim_drone_pose_topic,
             self._sim_pose_callback,
             qos_profile_sensor_data,
+            callback_group=self._sim_net_cb_group,
         )
 
         if self._sim_pose_update_hz > 0:
-            self._sim_pose_timer = self.create_timer(1.0 / self._sim_pose_update_hz, self._apply_sim_pose)
+            self._sim_pose_timer = self.create_timer(
+                1.0 / self._sim_pose_update_hz,
+                self._apply_sim_pose,
+                callback_group=self._sim_net_cb_group,
+            )
 
     def _publish_image_from_hardware(self):
         if self._cv_bridge is None or self._gimbal is None:
@@ -548,11 +590,19 @@ class CameraNode(Node):
 def main(args=None):
     rclpy.init(args=args)
     node = CameraNode()
+    executor = None
     try:
-        rclpy.spin(node)
+        if node._backend == "sim":
+            executor = MultiThreadedExecutor(num_threads=4)
+            executor.add_node(node)
+            executor.spin()
+        else:
+            rclpy.spin(node)
     except KeyboardInterrupt:
         pass
     finally:
+        if executor is not None:
+            executor.shutdown()
         node.destroy_node()
         rclpy.shutdown()
 
