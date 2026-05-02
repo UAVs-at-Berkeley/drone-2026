@@ -155,9 +155,12 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
 
   # Optional camera + gimbal node (not when sourced from start_drone.sh — that uses cuasc for camera).
   if [[ "${PASSIVE_INCLUDE_CAMERA:-1}" != "0" && "${PASSIVE_INCLUDE_CAMERA:-1}" != "false" && "${PASSIVE_INCLUDE_CAMERA:-1}" != "no" && "${PASSIVE_INCLUDE_CAMERA:-1}" != "off" ]]; then
-    if [[ -n "${PASSIVE_CAMERA_EXTRA_ARGS:-}" ]]; then
+    # Fall back to DRONE_MISSION_EXTRA_ARGS (set by sshManager for sim mode) when
+    # PASSIVE_CAMERA_EXTRA_ARGS is not explicitly provided.
+    _PCAM_ARGS="${PASSIVE_CAMERA_EXTRA_ARGS:-${DRONE_MISSION_EXTRA_ARGS:-}}"
+    if [[ -n "${_PCAM_ARGS:-}" ]]; then
       # shellcheck disable=SC2206
-      _PCAM_EXTRA=( ${PASSIVE_CAMERA_EXTRA_ARGS} )
+      _PCAM_EXTRA=( ${_PCAM_ARGS} )
     else
       _PCAM_EXTRA=()
     fi
