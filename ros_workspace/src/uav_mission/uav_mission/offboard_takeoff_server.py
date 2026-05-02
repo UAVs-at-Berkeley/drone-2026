@@ -2,6 +2,9 @@
 """
 Offboard takeoff action server — MAVROS offboard prime, OFFBOARD mode, arm, climb to goal altitude.
 
+After FC connects, optionally sends MoveCamera (/camera/move) to set initial gimbal pitch
+(default -60 deg, yaw/roll from last /gimbal_status when available).
+
 Completes with success when ExtendedState reports IN_AIR and altitude is within
 takeoff_altitude_tolerance_m of the requested goal altitude. Does not land.
 
@@ -12,7 +15,7 @@ that, another node should publish to /mavros/setpoint_position/local promptly.
 
 import rclpy
 import time
-from rclpy.action import ActionServer
+from rclpy.action import ActionClient, ActionServer
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
@@ -20,7 +23,8 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 from geometry_msgs.msg import PoseStamped, Quaternion
 from mavros_msgs.msg import ExtendedState, State
 from mavros_msgs.srv import CommandBool, SetMode
-from uav_msgs.action import OffboardTakeoff
+from uav_msgs.action import MoveCamera, OffboardTakeoff
+from uav_msgs.msg import GimbalStatus
 
 LANDED_STATE_ON_GROUND = 1
 LANDED_STATE_IN_AIR = 2
@@ -38,7 +42,13 @@ class OffboardTakeoffServer(Node):
         super().__init__("offboard_takeoff_server")
         self.declare_parameter("takeoff_altitude_tolerance_m", DEFAULT_TAKEOFF_ALT_TOLERANCE_M)
         self.declare_parameter("handoff_hold_sec", DEFAULT_HANDOFF_HOLD_SEC)
+        self.declare_parameter("takeoff_init_camera_pitch_enabled", True)
+        self.declare_parameter("takeoff_init_camera_pitch_deg", -60.0)
+        self.declare_parameter("takeoff_init_camera_timeout_sec", 5.0)
+        self.declare_parameter("camera_move_action", "/camera/move")
         self._cb_group = ReentrantCallbackGroup()
+
+        self._last_gimbal_status = None
 
         self._current_state = State()
         self._current_state.connected = False
@@ -71,6 +81,23 @@ class OffboardTakeoffServer(Node):
             "/mavros/local_position/pose",
             self._local_pose_cb,
             qos,
+            callback_group=self._cb_group,
+        )
+        self.create_subscription(
+            GimbalStatus,
+            "/gimbal_status",
+            self._gimbal_status_cb,
+            qos,
+            callback_group=self._cb_group,
+        )
+
+        camera_action = (
+            self.get_parameter("camera_move_action").get_parameter_value().string_value
+        )
+        self._camera_move_client = ActionClient(
+            self,
+            MoveCamera,
+            camera_action,
             callback_group=self._cb_group,
         )
 
@@ -107,6 +134,80 @@ class OffboardTakeoffServer(Node):
 
     def _local_pose_cb(self, msg: PoseStamped):
         self._current_altitude_m = float(msg.pose.position.z)
+
+    def _gimbal_status_cb(self, msg: GimbalStatus):
+        self._last_gimbal_status = msg
+
+    def _poll_future_done(self, future, deadline_monotonic: float) -> bool:
+        poll_sec = 0.05
+        while rclpy.ok() and time.monotonic() < deadline_monotonic:
+            if future.done():
+                return True
+            time.sleep(poll_sec)
+        return future.done()
+
+    def _init_takeoff_camera_pitch(self) -> None:
+        if not bool(self.get_parameter("takeoff_init_camera_pitch_enabled").value):
+            return
+        pitch_deg = float(self.get_parameter("takeoff_init_camera_pitch_deg").value)
+        timeout_sec = max(0.1, float(self.get_parameter("takeoff_init_camera_timeout_sec").value))
+        deadline = time.monotonic() + timeout_sec
+
+        if self._last_gimbal_status is not None:
+            yaw_deg = float(self._last_gimbal_status.yaw_deg)
+            roll_deg = float(self._last_gimbal_status.roll_deg)
+        else:
+            yaw_deg = 0.0
+            roll_deg = 0.0
+
+        wait_budget = max(0.0, deadline - time.monotonic())
+        if wait_budget <= 0.0:
+            self.get_logger().warn("Takeoff camera init skipped (timeout budget exhausted).")
+            return
+        if not self._camera_move_client.wait_for_server(timeout_sec=wait_budget):
+            self.get_logger().warn(
+                "camera MoveCamera server not ready within %.1f s; skipping pitch init."
+                % wait_budget
+            )
+            return
+
+        goal = MoveCamera.Goal()
+        goal.pitch_deg = pitch_deg
+        goal.yaw_deg = yaw_deg
+        goal.roll_deg = roll_deg
+
+        self.get_logger().info(
+            "Takeoff: commanding camera pitch=%.1f yaw=%.1f roll=%.1f via MoveCamera."
+            % (pitch_deg, yaw_deg, roll_deg)
+        )
+
+        send_future = self._camera_move_client.send_goal_async(goal)
+        if not self._poll_future_done(send_future, deadline):
+            self.get_logger().warn("MoveCamera goal send timed out during takeoff init.")
+            return
+
+        goal_handle = send_future.result()
+        if goal_handle is None or not goal_handle.accepted:
+            self.get_logger().warn("MoveCamera goal rejected during takeoff init.")
+            return
+
+        result_future = goal_handle.get_result_async()
+        if not self._poll_future_done(result_future, deadline):
+            self.get_logger().warn("MoveCamera result timed out during takeoff init.")
+            return
+
+        try:
+            action_result = result_future.result().result
+        except Exception as e:
+            self.get_logger().warn("MoveCamera result failed during takeoff init: %s" % str(e))
+            return
+
+        if action_result.success:
+            self.get_logger().info("Takeoff camera init: %s" % action_result.message)
+        else:
+            self.get_logger().warn(
+                "Takeoff camera init reported failure: %s" % action_result.message
+            )
 
     def _publish_feedback(self, goal_handle, phase: str, detail: str = ""):
         fb = OffboardTakeoff.Feedback()
@@ -189,6 +290,7 @@ class OffboardTakeoffServer(Node):
                     time.sleep(SETPOINT_PERIOD_SEC)
                     continue
                 self.get_logger().info("FC connected. Priming with %d setpoints." % PRIME_COUNT)
+                self._init_takeoff_camera_pitch()
                 phase = "prime"
                 prime_count = 0
                 last_request_sec = time.monotonic()
