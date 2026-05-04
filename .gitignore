@@ -2,7 +2,16 @@ ros_workspace/build/
 ros_workspace/install/
 ros_workspace/log/
 ros_workspace/bags/
-ros_workspace/src/**/__pycache__/
 ros_workspace/src/px4_msgs
 .DS_Store
 other_project/
+
+# Python bytecode
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*$py.class
+
+# Local Elytra mode overrides (never commit secrets)
+real/.env
+sim/.env

@@ -351,7 +351,7 @@ These definitions are the **contract** for each sub-team: your node should only 
 
 - **Integrate in dependency order.** Suggested order: (1) Central Command with PX4–ROS 2 DDS (waypoint loop only); (2) Camera node + `/image_data`; (3) Mapping node (Central Command can call mapping action); (4) Image detection node. Each step gives you a testable “slice” of the system.
 - **Use mocks for cross-team testing.** While the PX4–ROS 2 connection is not available, Mapping/Detection can use a *mock* action server or a simple “move to GPS” client that logs goals. Similarly, a mock `/image_data` publisher (e.g. static image or bag playback) lets Mapping/Detection develop without the real camera. Define minimal mock behaviors (e.g. “mock movement always succeeds after 2 s”) so expectations are consistent.
-- **Reuse SITL for integration.** Use your existing SITL/simulator to run as many nodes as possible together (Central Command with PX4–ROS 2 DDS + optional mocks). Add a simple “dry run” or “simulation” mode where Central Command runs the state machine without real hardware, to test transitions and action sequences.
+- **Reuse the packaged simulator for integration.** Use the Elytra package simulator under `sim/` to run as many nodes as possible together (Central Command with PX4–ROS 2 DDS + optional mocks). Add a simple “dry run” or “simulation” mode where Central Command runs the state machine without real hardware, to test transitions and action sequences.
 
 ### Configuration and operability
 

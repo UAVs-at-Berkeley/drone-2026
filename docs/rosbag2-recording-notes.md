@@ -1,42 +1,52 @@
-# ROS 2 bag recording (`flight_*` in passive / full bring-up)
+# ROS 2 bag recording notes
 
-## Expected layout
+Drone 2026 recording is started by `buttons/scripts/start_recording.sh`, either directly from Elytra Bridge Passive Record or as part of `buttons/scripts/start_drone.sh`.
 
-After a **clean** stop (`SIGINT` on the bag process, e.g. **End mission** in the app or Ctrl+C in tmux), each run under `BAG_DIR` should contain:
+## Expected output
 
-- **`metadata.yaml`**
-- Data files (**`.db3`** for sqlite3, or **`.mcap`** for mcap)
+After a clean stop, each bag directory under `BAG_DIR` should contain:
 
-If you only see an **empty `.mcap` (0 bytes)** and **no `metadata.yaml`**, the recorder almost certainly **exited immediately** or was **killed without finalizing** (no metadata / truncated storage).
+- `metadata.yaml`
+- data files such as `.db3` or `.mcap`
 
-## Defaults in `start_recording.sh`
+If you see an empty `.mcap` or no `metadata.yaml`, the recorder likely exited early or was killed before finalizing.
 
-- **`BAG_STORAGE`** defaults to **`sqlite3`** (more predictable than mcap for short runs and some setups).
-- Set **`BAG_STORAGE=mcap`** if you explicitly want MCAP.
-- Recorder **stderr** is appended to **`$BAG_DIR/${BAG_STEM}_record_stderr.log`** for debugging early exits.
-- After a few seconds, the script checks whether the bag PID is still running and prints an error if not.
+## Defaults
 
-## Common causes of 0-byte / broken bags
+- Physical target default bag directory: `/home/<user>/drone_workspace/bags`
+- Simulation default bag directory: `/home/sim/drone_workspace/bags`
+- `BAG_STORAGE` defaults to `sqlite3`
+- Set `BAG_STORAGE=mcap` only if you specifically want MCAP
+- Recorder stderr is written to `$BAG_DIR/${BAG_STEM}_record_stderr.log`
 
-1. **`ros2 bag record` crashed on startup** — read **`…_record_stderr.log`** next to the bag prefix.
-2. **Stopped too soon** — wait until the “bag PID” line appears and a few seconds pass before testing.
-3. **Hard kill** — `tmux kill-session` or `kill -9` can prevent rosbag2 from writing **`metadata.yaml`**.
-4. **Wrong PID** — prefer **End mission** (sends Ctrl+C to the pane) so the shell’s cleanup trap can SIGINT the recorder.
-5. **Signal only hit the parent CLI, not the recorder subtree** — `start_recording.sh` enables bash job control (`set -m`) and sends **SIGINT to the whole process group** (`kill -INT -- -$BAG_PID`) so shutdown matches an interactive Ctrl+C. If you still see a warning about missing **`metadata.yaml`**, check the printed **`…_record_stderr.log`** tail.
+## Clean shutdown
 
-## No flight computer / no serial
+Use Elytra Bridge End Mission or press Ctrl+C in the tmux pane running the script. The scripts send SIGINT to the rosbag2 process group so metadata can be written.
 
-Mavros will error on `/dev/ttyACM0`, but the node still runs and ROS publishes **`/rosout`**, parameter events, etc. **`ros2 bag record -a`** should still create a small valid bag with **`metadata.yaml`** after a **clean** stop. If **`metadata.yaml`** is missing but you see **`.db3`** files, try:
+Avoid:
+
+- `kill -9`
+- closing SSH while attached without tmux
+- `tmux kill-session` as the normal stop path
+
+## Common causes
+
+1. `ros2 bag record` crashed on startup. Check the `*_record_stderr.log` file.
+2. The run stopped too quickly. Wait until the script prints the bag PID.
+3. The process was hard-killed. Stop through Elytra or Ctrl+C in tmux.
+4. MAVROS failed because no flight controller was connected. This should still produce a small valid bag if ROS is running and the stop is clean.
+
+## Repair attempt
+
+If `.db3` files exist but `metadata.yaml` is missing:
 
 ```bash
-ros2 bag reindex /home/pi/drone_workspace/bags/flight_YYYYMMDD_HHMMSS
+ros2 bag reindex /path/to/bag_directory
 ```
 
-## Replay
+Inspect or replay:
 
 ```bash
 ros2 bag info ./flight_YYYYMMDD_HHMMSS
 ros2 bag play ./flight_YYYYMMDD_HHMMSS
 ```
-
-With sqlite3 storage, `ros2 bag play` usually auto-detects; if needed: `--storage-id sqlite3`.

@@ -1,3 +1,0 @@
-# Shell scripts must stay LF for Linux containers (avoid #!/usr/bin/env bash\r shebang failures).
-SITL/web-sim/**/*.sh text eol=lf
-SITL/web-sim/vnc/* text eol=lf

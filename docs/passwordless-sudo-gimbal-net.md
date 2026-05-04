@@ -1,32 +1,34 @@
-# Passwordless sudo for gimbal `eth0` setup (drone automation)
+# Passwordless sudo for gimbal Ethernet setup
 
-`start_recording.sh` brings up the gimbal Ethernet interface with `ip link` / `ip addr`, which normally requires **root**. In **detached tmux** (used by the web app), `sudo` cannot prompt for a password, so flights hang or fail until you configure **passwordless sudo for a single helper command**.
+`buttons/scripts/start_recording.sh` brings up the gimbal Ethernet interface with `ip link` and `ip addr`. Those operations require root. In Elytra Bridge and detached tmux sessions, `sudo` cannot prompt for a password, so configure passwordless sudo for one narrow helper command.
 
-## What gets allowed
+## Allowed helper
 
-Only this executable, as root, without a password:
+Only this executable should be allowed as root without a password:
 
-- `/usr/local/sbin/drone-gimbal-net-setup.sh`
+```text
+/usr/local/sbin/drone-gimbal-net-setup.sh
+```
 
-It runs the same two operations as before (`ip link set … up`, `ip addr replace …`), with arguments `INTERFACE` and `CIDR` (defaults `eth0` and `192.168.144.10/24`). The script validates arguments to keep the NOPASSWD entry narrow.
+The helper accepts an interface and CIDR, defaults to `eth0` and `192.168.144.10/24`, and validates the arguments before running network commands.
 
-## One-time install on the Pi
+## Install on the physical target
 
-From your cloned repo on the drone (adjust paths and user):
+From the package root on the drone:
 
 ```bash
-cd ~/drone_workspace/drone-2026
+cd /home/pi/drone_workspace/drone-2026
 
-sudo install -m 755 scripts/drone-gimbal-net-setup.sh /usr/local/sbin/drone-gimbal-net-setup.sh
+sudo install -m 755 real/scripts/drone-gimbal-net-setup.sh /usr/local/sbin/drone-gimbal-net-setup.sh
 
-sudo cp scripts/sudoers-drone-gimbal-net /etc/sudoers.d/drone-gimbal-net
+sudo cp real/scripts/sudoers-drone-gimbal-net /etc/sudoers.d/drone-gimbal-net
 sudo chmod 440 /etc/sudoers.d/drone-gimbal-net
 sudo chown root:root /etc/sudoers.d/drone-gimbal-net
 
 sudo visudo -cf /etc/sudoers.d/drone-gimbal-net
 ```
 
-Edit `/etc/sudoers.d/drone-gimbal-net` if your login is not `pi` (replace the username in the last line).
+Edit `/etc/sudoers.d/drone-gimbal-net` if your SSH user is not `pi`.
 
 ## Verify
 
@@ -35,27 +37,16 @@ sudo -n /usr/local/sbin/drone-gimbal-net-setup.sh eth0 192.168.144.10/24
 echo $?
 ```
 
-Exit code `0` and no prompt means it worked.
+Exit code `0` and no password prompt means it worked.
 
-## Custom interface or address
+## Overrides
 
-Set `ETH_GIMBAL_IF` / `ETH_GIMBAL_IP` when running the flight scripts as today. The helper is called as:
-
-`sudo /usr/local/sbin/drone-gimbal-net-setup.sh "$ETH_GIMBAL_IF" "$ETH_GIMBAL_IP"`
-
-Sudo allows **any arguments** to that single binary. If you want to lock the sudoers line to one interface only, edit `/etc/sudoers.d/drone-gimbal-net` to list the full command with fixed arguments (see `man sudoers`).
-
-## Optional: different install path
-
-If you install the helper somewhere else, set on the drone:
+Set these on the target if your hardware differs:
 
 ```bash
-export DRONE_NET_SETUP_SCRIPT=/path/to/drone-gimbal-net-setup.sh
+export ETH_GIMBAL_IF=eth0
+export ETH_GIMBAL_IP=192.168.144.10/24
+export DRONE_NET_SETUP_SCRIPT=/usr/local/sbin/drone-gimbal-net-setup.sh
 ```
 
-and add a matching `NOPASSWD` line in sudoers for that path.
-
-## Related
-
-- Static eth0 via Netplan (no runtime `sudo`): [raspberry-pi-eth0-setup.md](raspberry-pi-eth0-setup.md)
-
+For static Netplan configuration instead of runtime setup, see `docs/raspberry-pi-eth0-setup.md`.

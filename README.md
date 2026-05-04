@@ -1,49 +1,51 @@
-# drone-2026
+# Drone 2026 Elytra Bridge Package
 
-Monorepo for UAV-at-Berkeley flight software: a **ROS 2** workspace (missions and onboard nodes), **SITL** (software-in-the-loop simulation) assets and Docker images, and a **local web application** for controlling a physical drone or a Docker-hosted simulator.
+This directory is the `drone-2026` project package consumed by Elytra Bridge. It vendors the Drone 2026 flight software into the Elytra project-folder model while keeping operator parity with the original UAVs at Berkeley workflow.
 
-## Contents
+## Compartment Map
 
-| Path | Purpose |
-|------|---------|
-| [`ros_workspace/`](ros_workspace/) | ROS 2 packages: mission logic, messages/actions, launch files |
-| [`application/`](application/) | React + Vite frontend and Node backend for SSH/Docker-backed control |
-| [`SITL/`](SITL/) | Simulation Dockerfiles, web-sim compose stack, custom Gazebo models |
-| [`scripts/run-simulation-ui/`](scripts/run-simulation-ui/) | Optional launcher scripts for the web app |
+- `project.yaml` declares the project metadata, target paths, mission defaults, and operator buttons. SSH host/user/key material should stay in ignored `real/.env` (`DRONE_*`), not in YAML.
+- `sim` contains the simulator package directly. `sim/docker/docker-compose.yml` builds the robot image from this package root and preserves the runtime path `/home/sim/drone_workspace/drone-2026`.
+- `sim/docker/simulator.Dockerfile` is the reusable PX4/Gazebo/noVNC simulator base.
+- `sim/docker/robot.Dockerfile` extends the simulator base with the Drone 2026 ROS workspace, custom assets, simulator bridge helpers, and mission startup scripts.
+- `sim/scripts` contains simulator startup, target spawning, gimbal camera, RViz, and VNC helper scripts.
+- `ros_workspace` is the upstream ROS 2 Jazzy workspace shared by simulation and physical deployment.
+- `buttons/scripts` is the single runtime source for custom button scripts. Sim and physical targets both launch scripts from this compartment.
+- `real` contains physical-drone helper scripts, gimbal assets, and CubePilot configuration copied from upstream.
+- `real/.env.example` and `sim/.env.example` preserve the physical and simulation environment templates for this project.
+- `docs` contains package-aware operator documentation with updated Elytra paths.
+- `docs/upstream` contains preserved upstream operational docs. `docs/UPSTREAM_README.md` and `docs/UPSTREAM_APPLICATION_README.md` preserve the original repo and application documentation.
 
-## Prerequisites
+## Documentation
 
-- **Node.js 20+** and **npm**
-- **Docker Desktop** (or compatible Docker Engine + Compose V2) with the daemon **running**
+- `docs/PACKAGE.md` explains how this package is laid out for Elytra Bridge.
+- `docs/SIMULATION.md` covers Docker SITL from the package-local `sim` compartment.
+- `docs/PHYSICAL_DRONE.md` covers physical target setup, SSH, tmux, mission paths, and button scripts.
+- `docs/tmux-drone-session.md` covers manual tmux use for flight sessions.
+- `docs/passwordless-sudo-gimbal-net.md` and `docs/raspberry-pi-eth0-setup.md` cover gimbal Ethernet setup.
+- `docs/rosbag2-recording-notes.md` covers bag finalization and troubleshooting.
 
-For simulation on Windows, use Docker Desktop with the **WSL 2** backend for best compatibility.
+## Environment Loading
 
-## Two ways to use this repo
+Copy `real/.env.example` to `real/.env` for physical target overrides (including SSH + key paths) and `sim/.env.example` to `sim/.env` for simulator overrides. Elytra Bridge loads only the selected mode file during connect: real mode loads `real/.env`, and sim mode loads `sim/.env`.
 
-### Local simulation (Docker SITL + web UI)
+Precedence is selected mode `.env`, then the Elytra Bridge backend environment, then `project.yaml`.
 
-Use this path to develop or demo without hardware: PX4 SITL, Gazebo, MAVROS, and mission code run inside a container; the web app talks to that container via Docker.
+## Behavior Contracts
 
-1. Clone this repository.
-2. `cd application` and run `npm install`.
-3. Copy `backend/.env.example` to `backend/.env` and adjust paths only if your clone location is non-standard (see [SIMULATION.md](docs/SIMULATION.md)).
-4. Run `npm run dev` (starts backend and frontend dev servers).
+Keep these stable when refreshing the vendored snapshot:
 
-Alternatively, use a launcher script from [`scripts/run-simulation-ui/`](scripts/run-simulation-ui/).
+- Mission files are saved into `ros_workspace/src/uav_mission/missions` on the active target.
+- The sim container name remains `drone-2026-sim`, with noVNC on port `6080` and MAVLink UDP ports `14540` and `14550`.
+- Startup scripts in `buttons/scripts` keep their upstream CLI contract: `start_drone.sh [mission_yaml]`, passive recording via `start_recording.sh`, and ROS sourcing via `start_ros.sh`.
+- The layered Docker image keeps the Pi-compatible runtime path `/home/sim/drone_workspace/drone-2026` and still runs as the single backend-controlled `drone-2026-sim` container.
+- UI buttons map to Takeoff, Passive Record, End Mission, Simulation Reset, Shutdown Simulation, and Load Repo Branch hotswap behavior.
 
-5. Open the app in the browser (default [http://localhost:5173](http://localhost:5173)).
-6. Set **Control mode** to **Local simulation (Docker SITL)** and use **Start + Connect Simulation**.
+## Docker Image Layers
 
-The first image build can take a long time and use a large amount of disk space. See **[docs/SIMULATION.md](docs/SIMULATION.md)** for architecture, ports, environment variables, and troubleshooting.
+The simulation runtime is intentionally one container for MVP backend compatibility, but it is built from two image layers:
 
-### Physical drone
-
-Use SSH from the web app to a Raspberry Pi (or similar) running your workspace and scripts. See **[application/README.md](application/README.md)**.
-
-## Documentation index
-
-- **[docs/SIMULATION.md](docs/SIMULATION.md)** — Simulation setup, ports, `.env`, troubleshooting  
-- **[application/README.md](application/README.md)** — Web app features and drone SSH setup  
-- **[ros_workspace/README.md](ros_workspace/README.md)** — ROS 2 workspace layout  
-- **[ros_workspace/design_doc.md](ros_workspace/design_doc.md)** — Architecture details  
-- **[SITL/README.md](SITL/README.md)** — Legacy standalone simulator notes vs web-sim stack  
+- Build `simulator.Dockerfile` as `drone-2026-simulator:local` to package reusable PX4, Gazebo, VNC/noVNC, SSH, and OS tooling.
+- Build `robot.Dockerfile` as `drone-2026-robot:local` to add ROS 2 Jazzy, MAVROS, `ros_gz` bridge packages, `ros_workspace`, custom target and gimbal assets, RViz helpers, and startup scripts.
+- The Elytra backend prebuilds the `simulator-base` Compose profile before starting simulation so `robot.Dockerfile` can inherit from the local simulator image.
+- `sim/docker/Dockerfile` remains only as a compatibility alias for older direct references. New Compose builds should use `sim/docker/robot.Dockerfile`.

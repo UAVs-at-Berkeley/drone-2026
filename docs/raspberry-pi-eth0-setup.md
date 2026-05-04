@@ -1,30 +1,26 @@
-# Raspberry Pi (Ubuntu) – eth0 setup for gimbal
+# Raspberry Pi eth0 setup for the gimbal
 
-Use this when the gimbal is on `192.168.144.x` and you need eth0 on the Pi to be on the same subnet.
+Use this when the gimbal is on `192.168.144.x` and the Pi needs `eth0` on the same subnet.
 
-## 1. Check current eth0
+## Check the interface
 
 ```bash
-# Is the interface up and what address does it have?
 ip addr show eth0
-
-# Is it managed by NetworkManager or systemd-networkd?
 ip link show eth0
 ls /etc/netplan/
-cat /etc/netplan/*.yaml
 ```
 
-Note: On Ubuntu for Raspberry Pi, **Netplan** is usually used (config in `/etc/netplan/`).
+On Ubuntu for Raspberry Pi, Netplan configuration is usually under `/etc/netplan/`.
 
-## 2. Static IP on same subnet as gimbal (192.168.144.x)
+## Static IP example
 
-Edit Netplan (adjust filename to match what you have, e.g. `50-cloud-init.yaml` or `01-netcfg.yaml`):
+Edit the active Netplan file, for example:
 
 ```bash
 sudo nano /etc/netplan/50-cloud-init.yaml
 ```
 
-Example for **static** IP on eth0 in 192.168.144.x (gimbal at .108):
+Example static configuration:
 
 ```yaml
 network:
@@ -33,60 +29,37 @@ network:
     eth0:
       addresses:
         - 192.168.144.10/24
-      # Optional: set gateway if this network has one
-      # gateway4: 192.168.144.1
-      # nameservers:
-      #   addresses: [8.8.8.8]
 ```
 
-If you want **DHCP** on eth0 but the gimbal network provides DHCP:
-
-```yaml
-network:
-  version: 2
-  ethernets:
-    eth0:
-      dhcp4: true
-```
-
-Apply and restart networking:
+Apply and test:
 
 ```bash
 sudo netplan apply
-```
-
-Then check:
-
-```bash
 ip addr show eth0
 ping -c 2 192.168.144.108
 ```
 
-## 3. If eth0 is missing or not up
+## Runtime setup from Drone 2026 scripts
 
-```bash
-# List all interfaces
-ip link
+The Elytra package also supports runtime interface setup from `buttons/scripts/start_recording.sh`. For that path, install the helper documented in `docs/passwordless-sudo-gimbal-net.md`.
 
-# Bring eth0 up (no config change)
-sudo ip link set eth0 up
+The helper source lives at:
 
-# If eth0 doesn’t exist, check if it’s named differently (e.g. end0, enx...)
-ip link
+```text
+real/scripts/drone-gimbal-net-setup.sh
 ```
 
-## 4. Quick connectivity test to gimbal
+The sudoers template lives at:
+
+```text
+real/scripts/sudoers-drone-gimbal-net
+```
+
+## Connectivity checks
 
 ```bash
-# Ping gimbal
 ping -c 2 192.168.144.108
-
-# Test RTSP port (if nc available)
 nc -zv 192.168.144.108 554
 ```
 
-If ping fails, fix eth0 IP and routing first; then retry the camera node or `check_gimbal_stream.py`.
-
-## 5. Passwordless sudo for flight scripts (tmux / web app)
-
-`start_recording.sh` can configure eth0 at runtime with `sudo ip …`. For **non-interactive** sessions, install the small helper and sudoers drop-in described in [passwordless-sudo-gimbal-net.md](passwordless-sudo-gimbal-net.md).
+If ping fails, fix eth0 IP and routing first, then retry the gimbal camera node or `check_gimbal_stream.py`.

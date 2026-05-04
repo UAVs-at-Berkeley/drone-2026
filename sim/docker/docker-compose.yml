@@ -1,0 +1,42 @@
+services:
+  simulator-base:
+    profiles:
+      - build
+    image: drone-2026-simulator:local
+    build:
+      context: ../..
+      dockerfile: sim/docker/simulator.Dockerfile
+
+  sim:
+    image: drone-2026-robot:local
+    container_name: drone-2026-sim
+    build:
+      context: ../..
+      dockerfile: sim/docker/robot.Dockerfile
+      additional_contexts:
+        simulator-base: docker-image://drone-2026-simulator:local
+    environment:
+      SIM_SSH_PASSWORD: sim
+      SITL_MAKE_TARGET: gz_x500
+      PX4_HOME_LAT: "35.0494028"
+      PX4_HOME_LON: "-118.1507361"
+      # The stock PX4 "default" world is a featureless grey plane; lawn gives ground texture in the sim camera.
+      PX4_GZ_WORLD: lawn
+      GZ_PARTITION: drone-2026
+      ENABLE_RANDOM_TARGET: "1"
+      TARGET_MODEL_LIST: "custom_target,custom_target_2,targetNumber1,targetNumber2,targetNumber3,targetNumber4,targetNumber5,targetNumber6,targetNumber7,targetNumber8,targetNumber9,targetNumber10"
+      TARGET_RANDOM_RADIUS_M: "20.0"
+      TARGET_MIN_RADIUS_M: "2.0"
+      TARGET_Z_M: "0.0"
+      TARGET_RANDOM_YAW: "1"
+      ENABLE_SIM_GIMBAL_CAMERA: "1"
+      SIM_CAMERA_MODEL_NAME: "sim_gimbal_camera"
+      SIM_CAMERA_INSTANCE_NAME: "sim_gimbal_camera"
+      ENABLE_RVIZ_IMAGE_GUI: "1"
+      VNC_GEOMETRY: "1920x2000"
+    ports:
+      - "5900:5900"
+      - "6080:6080"
+      - "14540:14540/udp"
+      - "14550:14550/udp"
+    restart: unless-stopped

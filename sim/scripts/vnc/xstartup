@@ -1,0 +1,7 @@
+#!/bin/bash
+# TigerVNC session: Openbox and a tiler that stacks Gazebo (top) and RViz (bottom).
+export DISPLAY="${DISPLAY:-:0}"
+nohup env DISPLAY="${DISPLAY}" USER="${USER:-sim}" XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp/runtime-${USER:-sim}}" \
+  bash -c 'sleep 3; exec /home/sim/drone_workspace/drone-2026/sim/scripts/tile_sitl_desktop.sh' \
+  >>/tmp/tile_sitl_desktop.log 2>&1 </dev/null &
+exec openbox-session

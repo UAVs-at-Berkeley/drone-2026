@@ -1,0 +1,94 @@
+id: drone-2026
+name: Drone 2026 Compatibility Project
+description: MVP project that mirrors the UAVs at Berkeley drone-2026 sim and physical workflow.
+robotType: drone
+ros:
+  distro: jazzy
+
+defaultMission:
+  filename: mission_ui.yaml
+  yamlText: |
+    # Example full mission - ensure all action servers and MAVROS are running.
+    environment:
+      Geofence:
+        points:
+          - [35.0532222222, -118.1519, 0.0]
+          - [35.0502305556, -118.151980556, 0.0]
+          - [35.0502638889, -118.153483333, 0.0]
+          - [35.0471055556, -118.153541667, 0.0]
+          - [35.0470916667, -118.150530556, 0.0]
+          - [35.0490138889, -118.150538889, 0.0]
+          - [35.0490111111, -118.148583333, 0.0]
+          - [35.0532, -118.148541667, 0.0]
+      # Time-trial path: only valid format — [lat, long, alt_m] here; do not set latitudes/longitudes/altitudes on the time_trial step.
+      waypoints:
+        points:
+          - [35.0499621, -118.1499064, 22.4]
+          - [35.0507119, -118.1503508, 15.3]
+          - [35.0508392, -118.1512481, 20.4]
+          - [35.0503463, -118.1519656, 21.0]
+          - [35.0495996, -118.1519407, 22.0]
+          - [35.0491125, -118.1512267, 20.4]
+          - [35.0493253, -118.1502908, 19.2]
+      red_target: [35.0484527778, -118.151894444, 0.0]
+      x_target: [35.0512944444, -118.150588889, 0.0]
+      number_target: [35.05, -118.151, 0.0]
+    mission:
+      steps:
+        - takeoff
+        - time_trial
+        - object_localization
+        - return_to_home
+        - land
+
+sim:
+  composeFile: sim/docker/docker-compose.yml
+  composeProject: elytra-drone-2026
+  containerName: drone-2026-sim
+  novncOrigin: http://127.0.0.1:6080/vnc.html?autoconnect=1&resize=scale&path=websockify
+  missionDir: /home/sim/drone_workspace/drone-2026/ros_workspace/src/uav_mission/missions
+  rosInstallSetupPath: /home/sim/drone_workspace/drone-2026/ros_workspace/install/setup.bash
+  startScriptPath: /home/sim/drone_workspace/drone-2026/buttons/scripts/start_drone.sh
+  recordingScriptPath: /home/sim/drone_workspace/drone-2026/buttons/scripts/start_recording.sh
+  tmuxSession: drone_control
+  tmuxCaptureLines: 2500
+  tmuxStopGraceSeconds: 20
+  missionExtraArgs: include_camera:=true camera_backend:=sim
+  autoStopOnDisconnect: false
+
+real:
+  # SSH host/user/key material should live in ignored `real/.env` (DRONE_*), not in this file.
+  missionDir: /home/pi/drone_workspace/drone-2026/ros_workspace/src/uav_mission/missions
+  rosInstallSetupPath: /home/pi/drone_workspace/drone-2026/ros_workspace/install/setup.bash
+  startScriptPath: /home/pi/drone_workspace/drone-2026/buttons/scripts/start_drone.sh
+  recordingScriptPath: /home/pi/drone_workspace/drone-2026/buttons/scripts/start_recording.sh
+  tmuxSession: drone_control
+  tmuxCaptureLines: 2500
+  tmuxStopGraceSeconds: 60
+  missionExtraArgs: ""
+
+local:
+  upstreamSnapshot: vendored
+  simPackage: sim
+  rosWorkspace: ros_workspace
+  realScripts: real/scripts
+  buttonScripts: buttons/scripts
+  docs: docs/upstream
+
+buttons:
+  - id: takeoff
+    label: Takeoff
+    description: Start the full drone stack using start_drone.sh.
+    scriptKey: start
+    requiresMission: true
+    runMode: full
+  - id: passive-record
+    label: Passive Record
+    description: Start recording, MAVROS, and camera support using start_recording.sh.
+    scriptKey: recording
+    requiresMission: false
+    runMode: passive
+  - id: end-mission
+    label: End Mission
+    description: Send Ctrl+C to the active tmux session and clean up the running workflow.
+    stopAction: true

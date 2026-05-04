@@ -17,6 +17,7 @@ from rclpy.node import Node
 from rclpy.action import ActionServer
 import cv2
 import numpy as np
+from typing import Optional
 # from uav_msgs.msg import DetectionArray
 from uav_msgs.action import StartObjectLocalization
 
