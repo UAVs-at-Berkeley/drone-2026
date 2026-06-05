@@ -31,6 +31,7 @@ from uav_msgs.action import (
     StartObjectLocalization,
     StartPayloadDrop,
     StartTimeTrial,
+    StartPackageDelivery,
 )
 from uav_msgs.msg import MissionStatus
 
@@ -63,7 +64,7 @@ def _goal_time_trial(_node: "CentralCommandNode", step: Dict[str, Any]) -> Any:
 
 def _goal_object_localization(_node: "CentralCommandNode", step: Dict[str, Any]) -> Any:
     g = StartObjectLocalization.Goal()
-    g.placeholder = int(step.get("placeholder", 0))
+    g.output_directory = str(step.get("output_directory", "") or "")
     return g
 
 
@@ -82,9 +83,13 @@ def _goal_land(_node: "CentralCommandNode", step: Dict[str, Any]) -> Any:
 
 def _goal_payload_drop(_node: "CentralCommandNode", step: Dict[str, Any]) -> Any:
     g = StartPayloadDrop.Goal()
-    g.target_latitude_deg = float(step.get("target_latitude_deg", 0.0))
-    g.target_longitude_deg = float(step.get("target_longitude_deg", 0.0))
-    g.cruise_altitude_m = float(step.get("cruise_altitude_m", 15.0))
+    g.start = True
+    return g
+
+
+def _goal_package_delivery(_node: "CentralCommandNode", step: Dict[str, Any]) -> Any:
+    g = StartPackageDelivery.Goal()
+    g.start = True
     return g
 
 
@@ -99,6 +104,11 @@ STEP_REGISTRY: Dict[str, StepSpec] = {
     "return_to_home": (ReturnToHome, "return_to_home", _goal_return_to_home),
     "land": (OffboardLand, "offboard_land", _goal_land),
     "payload_drop": (StartPayloadDrop, "/payload_drop/start", _goal_payload_drop),
+    "package_delivery": (
+        StartPackageDelivery,
+        "/package_delivery/start",
+        _goal_package_delivery,
+    ),
 }
 
 

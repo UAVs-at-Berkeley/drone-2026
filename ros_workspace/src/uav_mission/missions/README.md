@@ -43,6 +43,8 @@ mission:
 | `takeoff`             | `OffboardTakeoff` (`offboard_takeoff`)                   | Optional `takeoff_altitude_m` (overrides node default). |
 | `time_trial`          | `StartTimeTrial` (`/time_trial/start`)                   | Path from `environment.waypoints.points` only (see above). |
 | `object_localization` | `StartObjectLocalization` (`/object_localization/start`) | Optional `placeholder` (uint8).                         |
+| `payload_drop`        | `StartPayloadDrop` (`/payload_drop/start`)               | Simple trigger; node parameters own target/drop tuning. |
+| `package_delivery`    | `StartPackageDelivery` (`/package_delivery/start`)       | Simple trigger; node parameters own target/release tuning. |
 | `return_to_home`      | `ReturnToHome` (`return_to_home`)                        | Optional `custom_mode` (default `AUTO.RTL`).            |
 | `land`                | `OffboardLand` (`offboard_land`)                         | Optional `min_pitch`, `yaw` (MAVROS `CommandTOL`).      |
 

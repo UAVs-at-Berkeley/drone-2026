@@ -172,4 +172,23 @@ def _mission_nodes(context, *args, **kwargs):
                 bundle["object_localization"],
             ],
         ),
+        Node(
+            package="uav_mission",
+            executable="payload_drop_node",
+            name="payload_drop_node",
+            output="screen",
+            parameters=[
+                {"use_sim_time": use_sim_time},
+                bundle["payload_drop"],
+            ],
+        ),
+        Node(
+            package="uav_mission",
+            executable="package_delivery_node",
+            name="package_delivery_node",
+            output="screen",
+            parameters=[
+                {"use_sim_time": use_sim_time},
+            ],
+        ),
     ]

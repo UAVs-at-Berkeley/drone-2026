@@ -25,6 +25,7 @@ ALLOWED_STEP_IDS = frozenset(
         "return_to_home",
         "land",
         "payload_drop",
+        "package_delivery",
     }
 )
 

@@ -52,6 +52,7 @@ setup(
             "time_trial_node = uav_mission.time_trial_node:main",
             "object_localization_node = uav_mission.object_localization_node:main",
             "payload_drop_node = uav_mission.payload_drop_node:main",
+            "package_delivery_node = uav_mission.package_delivery_node:main",
         ],
     },
 )

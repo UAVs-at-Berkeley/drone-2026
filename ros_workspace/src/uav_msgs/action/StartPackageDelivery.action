@@ -1,13 +1,23 @@
-# Goal: start autonomous package-delivery routine
-uint8 placeholder
+# Goal
+bool start
 
 ---
 # Result
 bool success
 string message
+float64 final_target_latitude_deg
+float64 final_target_longitude_deg
+float64 release_latitude_deg
+float64 release_longitude_deg
+float64 final_confidence
+bool release_commanded
 
 ---
 # Feedback
-float64 progress   # 0.0–1.0
 string phase
-
+string detail
+float64 progress
+float64 estimated_target_latitude_deg
+float64 estimated_target_longitude_deg
+float64 confidence
+float64 distance_to_release_point_m
