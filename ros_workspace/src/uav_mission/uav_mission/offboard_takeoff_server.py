@@ -2,8 +2,9 @@
 """
 Offboard takeoff action server — MAVROS offboard prime, OFFBOARD mode, arm, climb to goal altitude.
 
-Goal altitude is relative to the mavlink home (takeoff) position: local ENU z on
-/mavros/setpoint_position/local and /mavros/local_position/pose, not AMSL.
+Goal altitude is relative to the vehicle's local pose when the action starts:
+the server latches the current MAVROS local pose and commands a straight-up
+offset in local ENU.
 
 After FC connects, optionally sends MoveCamera (/camera/move) to set initial gimbal pitch
 (default -60 deg, yaw/roll from last /gimbal_status when available).
@@ -58,6 +59,7 @@ class OffboardTakeoffServer(Node):
         self._current_state.mode = ""
         self._current_state.armed = False
         self._landed_state = LANDED_STATE_ON_GROUND
+        self._current_local_position = None
         self._current_altitude_m = None
 
         qos = QoSProfile(
@@ -136,6 +138,11 @@ class OffboardTakeoffServer(Node):
         self._landed_state = msg.landed_state
 
     def _local_pose_cb(self, msg: PoseStamped):
+        self._current_local_position = (
+            float(msg.pose.position.x),
+            float(msg.pose.position.y),
+            float(msg.pose.position.z),
+        )
         self._current_altitude_m = float(msg.pose.position.z)
 
     def _gimbal_status_cb(self, msg: GimbalStatus):
@@ -218,13 +225,13 @@ class OffboardTakeoffServer(Node):
         fb.detail = detail
         goal_handle.publish_feedback(fb)
 
-    def _publish_setpoint(self, alt_m: float):
+    def _publish_setpoint(self, x_m: float, y_m: float, z_m: float):
         pose = PoseStamped()
         pose.header.stamp = self.get_clock().now().to_msg()
         pose.header.frame_id = "map"
-        pose.pose.position.x = 0.0
-        pose.pose.position.y = 0.0
-        pose.pose.position.z = float(alt_m)
+        pose.pose.position.x = float(x_m)
+        pose.pose.position.y = float(y_m)
+        pose.pose.position.z = float(z_m)
         pose.pose.orientation = Quaternion(x=0.0, y=0.0, z=0.0, w=1.0)
         self._local_pos_pub.publish(pose)
 
@@ -270,6 +277,10 @@ class OffboardTakeoffServer(Node):
         prime_count = 0
         last_request_sec = 0.0
         last_feedback_phase = ""
+        start_x_m = 0.0
+        start_y_m = 0.0
+        start_z_m = 0.0
+        target_z_m = altitude_m
 
         def publish_phase(p: str, detail: str = ""):
             nonlocal last_feedback_phase
@@ -292,6 +303,16 @@ class OffboardTakeoffServer(Node):
                 if not self._current_state.connected:
                     time.sleep(SETPOINT_PERIOD_SEC)
                     continue
+                if self._current_local_position is None:
+                    publish_phase("wait_local_pose", "Waiting for local position")
+                    time.sleep(SETPOINT_PERIOD_SEC)
+                    continue
+                start_x_m, start_y_m, start_z_m = self._current_local_position
+                target_z_m = start_z_m + altitude_m
+                self.get_logger().info(
+                    "Takeoff local pose latched: start=(%.2f, %.2f, %.2f), target=(%.2f, %.2f, %.2f), climb=%.2f m."
+                    % (start_x_m, start_y_m, start_z_m, start_x_m, start_y_m, target_z_m, altitude_m)
+                )
                 self.get_logger().info("FC connected. Priming with %d setpoints." % PRIME_COUNT)
                 self._init_takeoff_camera_pitch()
                 phase = "prime"
@@ -300,7 +321,7 @@ class OffboardTakeoffServer(Node):
                 publish_phase("prime", "Sending initial setpoints")
 
             if phase == "prime":
-                self._publish_setpoint(altitude_m)
+                self._publish_setpoint(start_x_m, start_y_m, target_z_m)
                 prime_count += 1
                 if prime_count >= PRIME_COUNT:
                     self.get_logger().info("Prime done. Requesting OFFBOARD and arm (every 5 s).")
@@ -311,7 +332,7 @@ class OffboardTakeoffServer(Node):
                 continue
 
             if phase in ("offboard_arm", "takeoff_wait"):
-                self._publish_setpoint(altitude_m)
+                self._publish_setpoint(start_x_m, start_y_m, target_z_m)
 
             if phase == "offboard_arm":
                 now_sec = time.monotonic()
@@ -329,6 +350,22 @@ class OffboardTakeoffServer(Node):
                 continue
 
             if phase == "takeoff_wait":
+                if self._current_state.mode != "OFFBOARD":
+                    result = OffboardTakeoff.Result()
+                    result.success = False
+                    result.message = "OFFBOARD mode exited before takeoff completed"
+                    goal_handle.abort()
+                    self.get_logger().error(result.message)
+                    return result
+
+                if not self._current_state.armed:
+                    result = OffboardTakeoff.Result()
+                    result.success = False
+                    result.message = "Vehicle disarmed before takeoff completed"
+                    goal_handle.abort()
+                    self.get_logger().error(result.message)
+                    return result
+
                 if self._landed_state != LANDED_STATE_IN_AIR:
                     time.sleep(SETPOINT_PERIOD_SEC)
                     continue
@@ -338,11 +375,11 @@ class OffboardTakeoffServer(Node):
                     time.sleep(SETPOINT_PERIOD_SEC)
                     continue
 
-                alt_error_m = abs(self._current_altitude_m - altitude_m)
+                alt_error_m = abs(self._current_altitude_m - target_z_m)
                 if alt_error_m <= tolerance_m:
                     self.get_logger().info(
-                        "Takeoff complete at altitude %.2f m (target %.2f m, tol %.2f m)."
-                        % (self._current_altitude_m, altitude_m, tolerance_m)
+                        "Takeoff complete at local z %.2f m (target %.2f m, climb %.2f m, tol %.2f m)."
+                        % (self._current_altitude_m, target_z_m, altitude_m, tolerance_m)
                     )
                     # Keep setpoints alive briefly while the mission controller hands off
                     # to the next step, preventing OFFBOARD signal-loss failsafe.
@@ -364,20 +401,20 @@ class OffboardTakeoffServer(Node):
                                 goal_handle.canceled()
                                 self.get_logger().info("Takeoff goal cancelled during handoff hold")
                                 return result
-                            self._publish_setpoint(altitude_m)
+                            self._publish_setpoint(start_x_m, start_y_m, target_z_m)
                             time.sleep(SETPOINT_PERIOD_SEC)
 
                     publish_phase("airborne", "Reached target altitude")
                     result = OffboardTakeoff.Result()
                     result.success = True
                     result.message = "Airborne"
-                    goal_handle.succeed(result)
+                    goal_handle.succeed()
                     return result
 
                 publish_phase(
                     "takeoff_wait",
-                    "Climbing to %.2f m (current %.2f m, |err| %.2f m)"
-                    % (altitude_m, self._current_altitude_m, alt_error_m),
+                    "Climbing %.2f m to local z %.2f m (current %.2f m, |err| %.2f m)"
+                    % (altitude_m, target_z_m, self._current_altitude_m, alt_error_m),
                 )
                 time.sleep(SETPOINT_PERIOD_SEC)
                 continue
