@@ -32,6 +32,7 @@ from uav_msgs.action import (
     StartObjectLocalization,
     StartPayloadDrop,
     StartTimeTrial,
+    StartPackageDelivery,
 )
 from uav_msgs.msg import MissionStatus
 
@@ -64,7 +65,7 @@ def _goal_time_trial(_node: "CentralCommandNode", step: Dict[str, Any]) -> Any:
 
 def _goal_object_localization(_node: "CentralCommandNode", step: Dict[str, Any]) -> Any:
     g = StartObjectLocalization.Goal()
-    g.placeholder = int(step.get("placeholder", 0))
+    g.output_directory = str(step.get("output_directory", "") or "")
     return g
 
 
@@ -83,9 +84,23 @@ def _goal_land(_node: "CentralCommandNode", step: Dict[str, Any]) -> Any:
 
 def _goal_payload_drop(_node: "CentralCommandNode", step: Dict[str, Any]) -> Any:
     g = StartPayloadDrop.Goal()
-    g.target_latitude_deg = float(step.get("target_latitude_deg", 0.0))
-    g.target_longitude_deg = float(step.get("target_longitude_deg", 0.0))
-    g.cruise_altitude_m = float(step.get("cruise_altitude_m", 15.0))
+    g.start = True
+    (
+        g.red_target_latitude_deg,
+        g.red_target_longitude_deg,
+        g.red_target_altitude_m,
+    ) = _node.red_target()
+    return g
+
+
+def _goal_package_delivery(_node: "CentralCommandNode", step: Dict[str, Any]) -> Any:
+    g = StartPackageDelivery.Goal()
+    g.start = True
+    (
+        g.red_target_latitude_deg,
+        g.red_target_longitude_deg,
+        g.red_target_altitude_m,
+    ) = _node.red_target()
     return g
 
 
@@ -100,6 +115,11 @@ STEP_REGISTRY: Dict[str, StepSpec] = {
     "return_to_home": (ReturnToHome, "return_to_home", _goal_return_to_home),
     "land": (OffboardLand, "offboard_land", _goal_land),
     "payload_drop": (StartPayloadDrop, "/payload_drop/start", _goal_payload_drop),
+    "package_delivery": (
+        StartPackageDelivery,
+        "/package_delivery/start",
+        _goal_package_delivery,
+    ),
 }
 
 
@@ -119,6 +139,7 @@ class CentralCommandNode(Node):
         )
 
         self._steps: List[Dict[str, Any]] = []
+        self._environment: Dict[str, Any] = {}
         self._load_mission_from_param()
 
         self._step_index = 0
@@ -163,23 +184,31 @@ class CentralCommandNode(Node):
     def _load_mission_from_param(self):
         mission_path = str(self.get_parameter("mission_file").value).strip()
         if not mission_path:
+            self._environment = {}
             self._steps = [{"id": "takeoff"}]
             self.get_logger().info("mission_file empty; running default [takeoff].")
             return
         if not os.path.isfile(mission_path):
+            self._environment = {}
             self._steps = [{"id": "takeoff"}]
             self.get_logger().error("mission_file not found: %r; running default [takeoff]." % mission_path)
             return
         try:
             data = load_mission_data(mission_path)
+            self._environment = data["environment"]
             self._steps = data["steps"]
             self.get_logger().info(
                 "Loaded %d mission steps from mission_file: %s" % (len(self._steps), mission_path)
             )
         except Exception as e:
             self.get_logger().error("Failed to load mission_file %r: %s" % (mission_path, e))
+            self._environment = {}
             self._steps = [{"id": "takeoff"}]
             self.get_logger().warn("Falling back to default single step: takeoff")
+
+    def red_target(self) -> Tuple[float, float, float]:
+        target = self._environment.get("red_target", [0.0, 0.0, 0.0])
+        return float(target[0]), float(target[1]), float(target[2])
 
     def _on_set_home_result(self, future):
         self._set_home_in_flight = False

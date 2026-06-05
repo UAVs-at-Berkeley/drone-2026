@@ -32,6 +32,7 @@ mission:
 - `steps` is ordered. Central Command runs each step to completion (action success) before starting the next.
 - Each entry is either a **string** (step id) or a **mapping** with required `id` and optional parameters.
 - For `time_trial`, define the path only in `environment.waypoints.points` as `[lat, long, alt_m]` triples; use a plain `- time_trial` step (do not put `latitudes` / `longitudes` / `altitudes` on the step). `mission_loader` copies that list into the action goal for Central Command.
+- For `payload_drop` and `package_delivery`, Central Command copies `environment.red_target` into the action goal as the approximate bullseye target.
 - `central_command_node` loads steps only from `mission_file` (absolute path on disk). Launch passes that path from the `mission_file` launch argument.
 - `time_trial_node` does not read waypoints from parameters; it uses `StartTimeTrial` goals (built from the mission by Central Command and `mission_loader`).
 
@@ -43,10 +44,16 @@ mission:
 | `takeoff`             | `OffboardTakeoff` (`offboard_takeoff`)                   | Optional `takeoff_altitude_m` (overrides node default). |
 | `time_trial`          | `StartTimeTrial` (`/time_trial/start`)                   | Path from `environment.waypoints.points` only (see above). |
 | `object_localization` | `StartObjectLocalization` (`/object_localization/start`) | Optional `placeholder` (uint8).                         |
+| `payload_drop`        | `StartPayloadDrop` (`/payload_drop/start`)               | Simple trigger; node parameters own target/drop/release tuning. Enforces the minimum drop altitude. |
+| `package_delivery`    | `StartPackageDelivery` (`/package_delivery/start`)       | Simple trigger; node parameters own target/landing/release tuning. Lands at target by default. |
 | `return_to_home`      | `ReturnToHome` (`return_to_home`)                        | Optional `custom_mode` (default `AUTO.RTL`).            |
 | `land`                | `OffboardLand` (`offboard_land`)                         | Optional `min_pitch`, `yaw` (MAVROS `CommandTOL`).      |
 
 
 ## Example
 
-See `example_mission.yaml` in this directory.
+See `example_mission.yaml` in this directory. For payload-drop v1 testing, use
+`payload_drop_mission.yaml`; it runs `takeoff`, `payload_drop`, `return_to_home`,
+then `land`. For package-delivery v1 testing, use `package_delivery_mission.yaml`;
+it runs `takeoff` then `package_delivery` because the package-delivery action lands
+at the target by default.

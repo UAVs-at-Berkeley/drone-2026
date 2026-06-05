@@ -1,43 +1,110 @@
 #!/usr/bin/env python3
 """
-Payload Drop Node - autonomous payload-drop / airdrop mission.
+Payload Drop Node - v1 bullseye beanbag-drop mission.
 
-- Exposes StartPayloadDrop action on /payload_drop/start.
-- Once triggered, this node owns the payload-drop mission logic (placeholder).
+Central Command only triggers this action. This node owns target detection,
+simple nadir pixel-to-ground projection, estimate aggregation, precision
+approach, minimum-altitude release, and post-release hold.
 """
 
+from __future__ import annotations
+
 import math
+import time
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Optional
 
 import rclpy
+from cv_bridge import CvBridge
 from geometry_msgs.msg import PoseStamped, Quaternion
-from mavros_msgs.msg import ExtendedState, State
-from mavros_msgs.srv import CommandBool, SetMode
-from rclpy.action import ActionServer
+from mavros_msgs.msg import HomePosition, State
+from mavros_msgs.srv import CommandLong
+from rclpy.action import ActionClient, ActionServer
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy
-from sensor_msgs.msg import NavSatFix
+from sensor_msgs.msg import Image, NavSatFix
+from std_msgs.msg import Float64
+from ultralytics import YOLO
 
-from uav_msgs.action import StartPayloadDrop
+from uav_msgs.action import MoveCamera, StartPayloadDrop
+from uav_msgs.msg import GimbalStatus
 
+EARTH_RADIUS_M = 6_378_137.0
 FEET_TO_METERS = 0.3048
-DEFAULT_HOVER_AGL_M = 7.0 * FEET_TO_METERS  # ~2.13 m
-DEFAULT_HOVER_DURATION_SEC = 5.0
-DEFAULT_DESCENT_RATE_M_PER_S = 0.3
+MIN_PAYLOAD_DROP_AGL_M = 6.0 * FEET_TO_METERS
+DEFAULT_DROP_HOVER_AGL_M = 2.2
+DEFAULT_TARGET_LAT = 35.049803
+DEFAULT_TARGET_LON = -118.150986
 SETPOINT_RATE_HZ = 20.0
-PRIME_COUNT = 100
-REQUEST_INTERVAL_SEC = 5.0
-LANDED_STATE_IN_AIR = 2
-M_PER_DEG_LAT = 111320.0
+SETPOINT_PERIOD_SEC = 1.0 / SETPOINT_RATE_HZ
+MAV_CMD_DO_SET_SERVO = 183
 
 
-def _gps_to_local_enu(home_lat, home_lon, target_lat, target_lon):
-    """Return (east_m, north_m) offset of target from home in local ENU frame."""
-    lat0 = math.radians(home_lat)
-    east = math.radians(target_lon - home_lon) * math.cos(lat0) * M_PER_DEG_LAT
-    north = math.radians(target_lat - home_lat) * M_PER_DEG_LAT
-    return east, north
+@dataclass
+class PixelDetection:
+    x_px: float
+    y_px: float
+    confidence: float
+    frame_width_px: int
+    frame_height_px: int
+
+
+@dataclass
+class TargetEstimate:
+    latitude_deg: float
+    longitude_deg: float
+    confidence: float
+    source_distance_m: float = 0.0
+    pixel_x_px: float = 0.0
+    pixel_y_px: float = 0.0
+
+
+def gps_to_local_enu_m(
+    home_lat: float,
+    home_lon: float,
+    lat: float,
+    lon: float,
+) -> tuple[float, float]:
+    lat0_rad = math.radians(home_lat)
+    east_m = math.radians(lon - home_lon) * EARTH_RADIUS_M * math.cos(lat0_rad)
+    north_m = math.radians(lat - home_lat) * EARTH_RADIUS_M
+    return east_m, north_m
+
+
+def local_enu_to_gps(
+    home_lat: float,
+    home_lon: float,
+    east_m: float,
+    north_m: float,
+) -> tuple[float, float]:
+    lat0_rad = math.radians(home_lat)
+    lat = home_lat + math.degrees(north_m / EARTH_RADIUS_M)
+    lon = home_lon + math.degrees(east_m / (EARTH_RADIUS_M * math.cos(lat0_rad)))
+    return lat, lon
+
+
+def horizontal_distance_m(
+    lat1: float,
+    lon1: float,
+    lat2: float,
+    lon2: float,
+) -> float:
+    east_m, north_m = gps_to_local_enu_m(lat1, lon1, lat2, lon2)
+    return math.hypot(east_m, north_m)
+
+
+def body_offset_to_enu_m(
+    forward_m: float,
+    left_m: float,
+    heading_deg: float,
+) -> tuple[float, float]:
+    heading_rad = math.radians(heading_deg)
+    north_m = forward_m * math.cos(heading_rad) + left_m * math.sin(heading_rad)
+    east_m = forward_m * math.sin(heading_rad) - left_m * math.cos(heading_rad)
+    return east_m, north_m
 
 
 class PayloadDropNode(Node):
@@ -45,54 +112,131 @@ class PayloadDropNode(Node):
         super().__init__("payload_drop_node")
         self._cb_group = ReentrantCallbackGroup()
 
-        self.declare_parameter("arrival_radius_m", 3.0)
-        self.declare_parameter("waypoint_timeout_sec", 120.0)
-        self.declare_parameter("descent_rate_m_per_s", DEFAULT_DESCENT_RATE_M_PER_S)
-        self.declare_parameter("hover_altitude_agl_m", DEFAULT_HOVER_AGL_M)
-        self.declare_parameter("hover_duration_sec", DEFAULT_HOVER_DURATION_SEC)
-
         self._state = State()
         self._state.connected = False
-        self._landed_state = 1  # ON_GROUND
+        self._gps: Optional[NavSatFix] = None
+        self._home_lat: Optional[float] = None
+        self._home_lon: Optional[float] = None
+        self._local_pose: Optional[PoseStamped] = None
+        self._heading_deg = 0.0
+        self._latest_image: Optional[Image] = None
+        self._latest_gimbal: Optional[GimbalStatus] = None
 
-        self._home_lat = None
-        self._home_lon = None
-        self._local_x = None
-        self._local_y = None
-        self._local_z = None
+        package_dir = Path(__file__).resolve().parent
+        self.declare_parameter("model", str(package_dir / "yolo26s-obj_ncnn_model"))
+        self.declare_parameter("target_latitude_deg", DEFAULT_TARGET_LAT)
+        self.declare_parameter("target_longitude_deg", DEFAULT_TARGET_LON)
+        self.declare_parameter("mission_timeout_sec", 180.0)
+        self.declare_parameter("search_altitude_m", 8.0)
+        self.declare_parameter("minimum_drop_agl_m", MIN_PAYLOAD_DROP_AGL_M)
+        self.declare_parameter("drop_hover_agl_m", DEFAULT_DROP_HOVER_AGL_M)
+        self.declare_parameter("arrival_radius_m", 1.0)
+        self.declare_parameter("release_radius_m", 0.35)
+        self.declare_parameter("settle_time_sec", 2.0)
+        self.declare_parameter("post_release_hold_sec", 2.0)
+        self.declare_parameter("detection_timeout_sec", 45.0)
+        self.declare_parameter("required_estimates", 8)
+        self.declare_parameter("max_estimate_spread_m", 0.75)
+        self.declare_parameter("min_detection_confidence", 0.45)
+        self.declare_parameter("target_class_name", "Target")
+        self.declare_parameter("camera_horizontal_fov_deg", 54.7)
+        self.declare_parameter("camera_vertical_fov_deg", 30.2)
 
-        qos = QoSProfile(
+        # Body-frame lever arms from GPS/local-position reference.
+        # +forward is toward drone nose, +left is toward drone left, +up is above reference.
+        self.declare_parameter("camera_forward_offset_m", 0.20)
+        self.declare_parameter("camera_left_offset_m", 0.0)
+        self.declare_parameter("camera_up_offset_m", -0.15)
+        self.declare_parameter("release_forward_offset_m", 0.0)
+        self.declare_parameter("release_left_offset_m", 0.0)
+
+        self.declare_parameter("release_enabled", False)
+        self.declare_parameter("release_servo_channel", 0)
+        self.declare_parameter("release_pwm", 1900.0)
+        self.declare_parameter("release_reset_pwm", 1100.0)
+        self.declare_parameter("release_pulse_sec", 0.75)
+        self.declare_parameter("release_command_service", "/mavros/cmd/command")
+
+        self.declare_parameter("camera_action", "/camera/move")
+        self.declare_parameter("camera_nadir_pitch_deg", -90.0)
+        self.declare_parameter("camera_nadir_yaw_deg", 0.0)
+        self.declare_parameter("camera_nadir_roll_deg", 0.0)
+        self.declare_parameter("camera_command_timeout_sec", 5.0)
+
+        self._bridge = CvBridge()
+        self._model = YOLO(self._str_param("model"))
+
+        sensor_qos = QoSProfile(
             depth=10,
             reliability=ReliabilityPolicy.BEST_EFFORT,
             history=HistoryPolicy.KEEP_LAST,
         )
         self.create_subscription(
-            State, "/mavros/state", self._state_cb, qos,
+            State,
+            "/mavros/state",
+            self._state_callback,
+            sensor_qos,
             callback_group=self._cb_group,
         )
         self.create_subscription(
-            ExtendedState, "/mavros/extended_state", self._ext_cb, qos,
+            HomePosition,
+            "/mavros/home_position/home",
+            self._home_position_callback,
+            sensor_qos,
             callback_group=self._cb_group,
         )
         self.create_subscription(
-            NavSatFix, "/mavros/global_position/global", self._gps_cb, qos,
+            NavSatFix,
+            "/mavros/global_position/global",
+            self._gps_callback,
+            sensor_qos,
             callback_group=self._cb_group,
         )
         self.create_subscription(
-            PoseStamped, "/mavros/local_position/pose", self._local_pose_cb, qos,
+            PoseStamped,
+            "/mavros/local_position/pose",
+            self._local_pose_callback,
+            sensor_qos,
+            callback_group=self._cb_group,
+        )
+        self.create_subscription(
+            Float64,
+            "/mavros/global_position/compass_hdg",
+            self._heading_callback,
+            sensor_qos,
+            callback_group=self._cb_group,
+        )
+        self.create_subscription(
+            Image,
+            "/image_data",
+            self._image_callback,
+            1,
+            callback_group=self._cb_group,
+        )
+        self.create_subscription(
+            GimbalStatus,
+            "/gimbal_status",
+            self._gimbal_callback,
+            sensor_qos,
             callback_group=self._cb_group,
         )
 
         self._setpoint_pub = self.create_publisher(
-            PoseStamped, "/mavros/setpoint_position/local", 10,
+            PoseStamped,
+            "/mavros/setpoint_position/local",
+            10,
         )
-        self._arming_client = self.create_client(
-            CommandBool, "/mavros/cmd/arming", callback_group=self._cb_group,
+        self._camera_client = ActionClient(
+            self,
+            MoveCamera,
+            self._str_param("camera_action"),
+            callback_group=self._cb_group,
         )
-        self._set_mode_client = self.create_client(
-            SetMode, "/mavros/set_mode", callback_group=self._cb_group,
+        self._release_client = self.create_client(
+            CommandLong,
+            self._str_param("release_command_service"),
+            callback_group=self._cb_group,
         )
-
         self._action_server = ActionServer(
             self,
             StartPayloadDrop,
@@ -102,226 +246,939 @@ class PayloadDropNode(Node):
         )
         self.get_logger().info("PayloadDropNode ready on /payload_drop/start.")
 
-    # Subscribers
+    def _float_param(self, name: str) -> float:
+        return float(self.get_parameter(name).value)
 
-    def _state_cb(self, msg: State):
+    def _int_param(self, name: str) -> int:
+        return int(self.get_parameter(name).value)
+
+    def _bool_param(self, name: str) -> bool:
+        return bool(self.get_parameter(name).value)
+
+    def _str_param(self, name: str) -> str:
+        return str(self.get_parameter(name).value)
+
+    def _goal_red_target(self, request) -> tuple[float, float, float]:
+        lat = float(getattr(request, "red_target_latitude_deg", 0.0))
+        lon = float(getattr(request, "red_target_longitude_deg", 0.0))
+        alt = float(getattr(request, "red_target_altitude_m", 0.0))
+        if abs(lat) < 1e-9 and abs(lon) < 1e-9:
+            lat = self._float_param("target_latitude_deg")
+            lon = self._float_param("target_longitude_deg")
+        return lat, lon, alt
+
+    def _state_callback(self, msg: State) -> None:
         self._state = msg
 
-    def _ext_cb(self, msg: ExtendedState):
-        self._landed_state = msg.landed_state
+    def _home_position_callback(self, msg: HomePosition) -> None:
+        if self._home_lat is not None and self._home_lon is not None:
+            return
+        self._home_lat = float(msg.geo.latitude)
+        self._home_lon = float(msg.geo.longitude)
+        self.get_logger().info(
+            "Payload drop home position latched: lat=%.7f lon=%.7f"
+            % (self._home_lat, self._home_lon)
+        )
 
-    def _gps_cb(self, msg: NavSatFix):
-        if self._home_lat is None:
-            self._home_lat = msg.latitude
-            self._home_lon = msg.longitude
-            self.get_logger().info(
-                "Home GPS locked: lat=%.6f lon=%.6f" % (self._home_lat, self._home_lon)
+    def _gps_callback(self, msg: NavSatFix) -> None:
+        self._gps = msg
+
+    def _local_pose_callback(self, msg: PoseStamped) -> None:
+        self._local_pose = msg
+
+    def _heading_callback(self, msg: Float64) -> None:
+        self._heading_deg = float(msg.data)
+
+    def _image_callback(self, msg: Image) -> None:
+        self._latest_image = msg
+
+    def _gimbal_callback(self, msg: GimbalStatus) -> None:
+        self._latest_gimbal = msg
+
+    def _publish_feedback(
+        self,
+        goal_handle,
+        phase: str,
+        detail: str,
+        progress: float,
+        *,
+        estimate: Optional[TargetEstimate] = None,
+        distance_to_release_point_m: float = float("nan"),
+    ) -> None:
+        feedback = StartPayloadDrop.Feedback()
+        feedback.phase = phase
+        feedback.detail = detail
+        feedback.progress = float(progress)
+        feedback.distance_to_release_point_m = float(distance_to_release_point_m)
+        if estimate is not None:
+            feedback.estimated_target_latitude_deg = float(estimate.latitude_deg)
+            feedback.estimated_target_longitude_deg = float(estimate.longitude_deg)
+            feedback.confidence = float(estimate.confidence)
+            feedback.detected_pixel_x = float(estimate.pixel_x_px)
+            feedback.detected_pixel_y = float(estimate.pixel_y_px)
+        goal_handle.publish_feedback(feedback)
+
+    def _make_result(
+        self,
+        success: bool,
+        message: str,
+        *,
+        estimate: Optional[TargetEstimate] = None,
+        release_latitude_deg: float = 0.0,
+        release_longitude_deg: float = 0.0,
+        release_commanded: bool = False,
+    ) -> StartPayloadDrop.Result:
+        result = StartPayloadDrop.Result()
+        result.success = bool(success)
+        result.message = message
+        result.release_latitude_deg = float(release_latitude_deg)
+        result.release_longitude_deg = float(release_longitude_deg)
+        result.release_commanded = bool(release_commanded)
+        if estimate is not None:
+            result.final_target_latitude_deg = float(estimate.latitude_deg)
+            result.final_target_longitude_deg = float(estimate.longitude_deg)
+            result.final_confidence = float(estimate.confidence)
+            result.detected_pixel_x = float(estimate.pixel_x_px)
+            result.detected_pixel_y = float(estimate.pixel_y_px)
+        return result
+
+    def _abort(
+        self,
+        goal_handle,
+        message: str,
+        *,
+        estimate: Optional[TargetEstimate] = None,
+        release_latitude_deg: float = 0.0,
+        release_longitude_deg: float = 0.0,
+        release_commanded: bool = False,
+    ) -> StartPayloadDrop.Result:
+        result = self._make_result(
+            False,
+            message,
+            estimate=estimate,
+            release_latitude_deg=release_latitude_deg,
+            release_longitude_deg=release_longitude_deg,
+            release_commanded=release_commanded,
+        )
+        goal_handle.abort()
+        return result
+
+    def _cancel(self, goal_handle) -> StartPayloadDrop.Result:
+        result = self._make_result(False, "Cancelled")
+        goal_handle.canceled()
+        return result
+
+    def _execute_callback(self, goal_handle):
+        if not bool(goal_handle.request.start):
+            return self._abort(goal_handle, "StartPayloadDrop goal had start=false")
+
+        target_lat, target_lon, _target_alt = self._goal_red_target(goal_handle.request)
+        mission_timeout_sec = self._float_param("mission_timeout_sec")
+        deadline_monotonic = time.monotonic() + mission_timeout_sec
+
+        self._publish_feedback(
+            goal_handle,
+            "starting",
+            "Starting payload drop mission",
+            0.0,
+        )
+
+        if not self._wait_for_required_inputs(goal_handle, deadline_monotonic):
+            if goal_handle.is_cancel_requested:
+                return self._cancel(goal_handle)
+            return self._abort(goal_handle, "Timed out waiting for required inputs")
+
+        if not self._point_camera_nadir(goal_handle):
+            if goal_handle.is_cancel_requested:
+                return self._cancel(goal_handle)
+            return self._abort(goal_handle, "Failed to point camera nadir")
+
+        if not self._fly_to_approximate_target(
+            goal_handle,
+            deadline_monotonic,
+            target_lat,
+            target_lon,
+        ):
+            if goal_handle.is_cancel_requested:
+                return self._cancel(goal_handle)
+            return self._abort(goal_handle, "Failed to reach approximate target")
+
+        estimate = self._detect_bullseye_center(goal_handle, deadline_monotonic)
+        if estimate is None:
+            if goal_handle.is_cancel_requested:
+                return self._cancel(goal_handle)
+            return self._abort(goal_handle, "Failed to estimate bullseye center")
+
+        release_lat, release_lon = self._release_point_for_target_gps(
+            estimate.latitude_deg,
+            estimate.longitude_deg,
+        )
+        if not self._fly_to_release_point(
+            goal_handle,
+            estimate,
+            release_lat,
+            release_lon,
+            deadline_monotonic,
+        ):
+            if goal_handle.is_cancel_requested:
+                return self._cancel(goal_handle)
+            return self._abort(
+                goal_handle,
+                "Failed to reach release point",
+                estimate=estimate,
+                release_latitude_deg=release_lat,
+                release_longitude_deg=release_lon,
             )
 
-    def _local_pose_cb(self, msg: PoseStamped):
-        self._local_x = msg.pose.position.x
-        self._local_y = msg.pose.position.y
-        self._local_z = msg.pose.position.z
+        if not self._settle_before_release(
+            goal_handle,
+            estimate,
+            release_lat,
+            release_lon,
+            deadline_monotonic,
+        ):
+            if goal_handle.is_cancel_requested:
+                return self._cancel(goal_handle)
+            return self._abort(
+                goal_handle,
+                "Failed to settle before release",
+                estimate=estimate,
+                release_latitude_deg=release_lat,
+                release_longitude_deg=release_lon,
+            )
 
-    # Helpers 
+        release_ok, release_commanded = self._trigger_release(goal_handle, estimate)
+        if not release_ok:
+            return self._abort(
+                goal_handle,
+                "Release command failed",
+                estimate=estimate,
+                release_latitude_deg=release_lat,
+                release_longitude_deg=release_lon,
+                release_commanded=release_commanded,
+            )
 
-    def _fb(self, goal_handle, phase: str, detail: str = ""):
-        fb = StartPayloadDrop.Feedback()
-        fb.phase = phase
-        fb.detail = detail
-        goal_handle.publish_feedback(fb)
+        self._hold_after_release(goal_handle, estimate, release_lat, release_lon)
 
-    def _pub_setpoint(self, x: float, y: float, z: float):
+        message = "Payload drop mission completed"
+        if not release_commanded:
+            message = "Payload drop mission completed with release disabled"
+        result = self._make_result(
+            True,
+            message,
+            estimate=estimate,
+            release_latitude_deg=release_lat,
+            release_longitude_deg=release_lon,
+            release_commanded=release_commanded,
+        )
+        goal_handle.succeed()
+        return result
+
+    def _wait_for_required_inputs(self, goal_handle, deadline_monotonic: float) -> bool:
+        last_feedback_time = time.monotonic() - 1.0
+
+        while rclpy.ok() and time.monotonic() < deadline_monotonic:
+            if goal_handle.is_cancel_requested:
+                return False
+
+            missing = []
+            if not self._state.connected:
+                missing.append("FC connection")
+            if self._home_lat is None or self._home_lon is None:
+                missing.append("home position")
+            if self._gps is None:
+                missing.append("GPS")
+            if self._local_pose is None:
+                missing.append("local pose")
+            if self._latest_image is None:
+                missing.append("image stream")
+
+            if not missing:
+                self._publish_feedback(
+                    goal_handle,
+                    "wait_ready",
+                    "Required inputs ready",
+                    0.10,
+                )
+                return True
+
+            now = time.monotonic()
+            if now - last_feedback_time >= 1.0:
+                self._publish_feedback(
+                    goal_handle,
+                    "wait_ready",
+                    "Waiting for " + ", ".join(missing),
+                    0.05,
+                )
+                last_feedback_time = now
+
+            time.sleep(0.05)
+
+        return False
+
+    def _point_camera_nadir(self, goal_handle) -> bool:
+        timeout_sec = self._float_param("camera_command_timeout_sec")
+        deadline = time.monotonic() + timeout_sec
+
+        self._publish_feedback(
+            goal_handle,
+            "camera",
+            "Waiting for camera action server",
+            0.15,
+        )
+        if not self._camera_client.wait_for_server(timeout_sec=timeout_sec):
+            self.get_logger().error("Camera action server unavailable.")
+            return False
+
+        goal = MoveCamera.Goal()
+        goal.pitch_deg = self._float_param("camera_nadir_pitch_deg")
+        goal.yaw_deg = self._float_param("camera_nadir_yaw_deg")
+        goal.roll_deg = self._float_param("camera_nadir_roll_deg")
+
+        self._publish_feedback(
+            goal_handle,
+            "camera",
+            "Commanding camera nadir",
+            0.18,
+        )
+        send_future = self._camera_client.send_goal_async(goal)
+
+        while rclpy.ok() and not send_future.done():
+            if goal_handle.is_cancel_requested:
+                return False
+            if time.monotonic() >= deadline:
+                self.get_logger().error("Camera goal send timed out.")
+                return False
+            time.sleep(0.02)
+
+        camera_goal_handle = send_future.result()
+        if camera_goal_handle is None or not camera_goal_handle.accepted:
+            self.get_logger().error("Camera goal rejected.")
+            return False
+
+        result_future = camera_goal_handle.get_result_async()
+        while rclpy.ok() and not result_future.done():
+            if goal_handle.is_cancel_requested:
+                camera_goal_handle.cancel_goal_async()
+                return False
+            if time.monotonic() >= deadline:
+                self.get_logger().error("Camera goal result timed out.")
+                return False
+            time.sleep(0.02)
+
+        try:
+            action_result = result_future.result().result
+        except Exception as exc:
+            self.get_logger().error("Camera action failed: %s" % str(exc))
+            return False
+
+        if not action_result.success:
+            self.get_logger().error("Camera action reported failure: %s" % action_result.message)
+            return False
+
+        self._publish_feedback(
+            goal_handle,
+            "camera",
+            "Camera nadir command complete",
+            0.20,
+        )
+        return True
+
+    def _local_xyz(self) -> tuple[float, float, float]:
+        assert self._local_pose is not None
+        p = self._local_pose.pose.position
+        return float(p.x), float(p.y), float(p.z)
+
+    def _current_orientation(self) -> Quaternion:
+        if self._local_pose is None:
+            return Quaternion(x=0.0, y=0.0, z=0.0, w=1.0)
+        q = self._local_pose.pose.orientation
+        return Quaternion(
+            x=float(q.x),
+            y=float(q.y),
+            z=float(q.z),
+            w=float(q.w),
+        )
+
+    def _publish_local_setpoint(
+        self,
+        east_m: float,
+        north_m: float,
+        up_m: float,
+    ) -> None:
         msg = PoseStamped()
         msg.header.stamp = self.get_clock().now().to_msg()
         msg.header.frame_id = "map"
-        msg.pose.position.x = float(x)
-        msg.pose.position.y = float(y)
-        msg.pose.position.z = float(z)
-        msg.pose.orientation = Quaternion(x=0.0, y=0.0, z=0.0, w=1.0)
+        msg.pose.position.x = float(east_m)
+        msg.pose.position.y = float(north_m)
+        msg.pose.position.z = float(up_m)
+        msg.pose.orientation = self._current_orientation()
         self._setpoint_pub.publish(msg)
 
-    def _set_mode_async(self, mode: str):
-        if not self._set_mode_client.service_is_ready():
-            return
-        req = SetMode.Request()
-        req.base_mode = 0
-        req.custom_mode = mode
-        self._set_mode_client.call_async(req)
-
-    def _arm_async(self):
-        if not self._arming_client.service_is_ready():
-            return
-        req = CommandBool.Request()
-        req.value = True
-        self._arming_client.call_async(req)
-
-    def _dist_xy(self, tx: float, ty: float) -> float:
-        if self._local_x is None:
-            return float("inf")
-        return math.sqrt((self._local_x - tx) ** 2 + (self._local_y - ty) ** 2)
-
-    def _cancelled(self, goal_handle, msg: str = "Cancelled"):
-        r = StartPayloadDrop.Result()
-        r.success = False
-        r.message = msg
-        goal_handle.canceled()
-        return r
-
-    def _aborted(self, goal_handle, msg: str):
-        r = StartPayloadDrop.Result()
-        r.success = False
-        r.message = msg
-        goal_handle.abort()
-        return r
-
-    # Mission execution
-
-    def _execute_callback(self, goal_handle):
-        target_lat = float(goal_handle.request.target_latitude_deg)
-        target_lon = float(goal_handle.request.target_longitude_deg)
-        cruise_alt_m = float(goal_handle.request.cruise_altitude_m)
-
-        arrival_radius = float(self.get_parameter("arrival_radius_m").value)
-        wp_timeout = float(self.get_parameter("waypoint_timeout_sec").value)
-        descent_rate = float(self.get_parameter("descent_rate_m_per_s").value)
-        hover_agl = float(self.get_parameter("hover_altitude_agl_m").value)
-        hover_dur = float(self.get_parameter("hover_duration_sec").value)
-
-        rate = self.create_rate(int(SETPOINT_RATE_HZ))
-        descent_step = descent_rate / SETPOINT_RATE_HZ
-
-        # Wait for Flight Controller connection
-        self._fb(goal_handle, "wait_connection", "Waiting for FC connection")
-        while rclpy.ok():
+    def _fly_to_local(
+        self,
+        goal_handle,
+        phase: str,
+        target_east_m: float,
+        target_north_m: float,
+        target_up_m: float,
+        radius_m: float,
+        deadline_monotonic: float,
+        progress: float,
+        *,
+        estimate: Optional[TargetEstimate] = None,
+    ) -> bool:
+        last_feedback_time = time.monotonic() - 0.5
+        while rclpy.ok() and time.monotonic() < deadline_monotonic:
             if goal_handle.is_cancel_requested:
-                return self._cancelled(goal_handle)
-            if self._state.connected:
-                break
-            rate.sleep()
-        self.get_logger().info("FC connected.")
+                return False
 
-        # Wait for GPS fix + local position
-        self._fb(goal_handle, "wait_gps", "Waiting for GPS and local position")
-        while rclpy.ok():
-            if goal_handle.is_cancel_requested:
-                return self._cancelled(goal_handle)
-            if self._home_lat is not None and self._local_x is not None:
-                break
-            rate.sleep()
-
-        target_x, target_y = _gps_to_local_enu(
-            self._home_lat, self._home_lon, target_lat, target_lon,
-        )
-        self.get_logger().info(
-            "Target ENU: x=%.1f m East, y=%.1f m North  cruise z=%.1f m"
-            % (target_x, target_y, cruise_alt_m)
-        )
-
-        # Prime OFFBOARD setpoints
-        self._fb(goal_handle, "prime", "Priming %d setpoints" % PRIME_COUNT)
-        for _ in range(PRIME_COUNT):
-            if goal_handle.is_cancel_requested:
-                return self._cancelled(goal_handle)
-            self._pub_setpoint(0.0, 0.0, cruise_alt_m)
-            rate.sleep()
-
-        # Request OFFBOARD mode and arm
-        self._fb(goal_handle, "offboard_arm", "Requesting OFFBOARD mode and arming")
-        last_req_ns = 0
-        while rclpy.ok():
-            if goal_handle.is_cancel_requested:
-                return self._cancelled(goal_handle)
-            self._pub_setpoint(0.0, 0.0, cruise_alt_m)
-            now_ns = self.get_clock().now().nanoseconds
-            if (now_ns - last_req_ns) >= int(REQUEST_INTERVAL_SEC * 1e9):
-                last_req_ns = now_ns
-                if self._state.mode != "OFFBOARD":
-                    self._set_mode_async("OFFBOARD")
-                elif not self._state.armed:
-                    self._arm_async()
-            if self._state.mode == "OFFBOARD" and self._state.armed:
-                self.get_logger().info("OFFBOARD and armed.")
-                break
-            rate.sleep()
-
-        # Climb to cruise altitude 
-        self._fb(goal_handle, "takeoff", "Climbing to %.1f m" % cruise_alt_m)
-        while rclpy.ok():
-            if goal_handle.is_cancel_requested:
-                return self._cancelled(goal_handle)
-            self._pub_setpoint(0.0, 0.0, cruise_alt_m)
-            if self._landed_state == LANDED_STATE_IN_AIR:
-                self.get_logger().info("Airborne.")
-                break
-            rate.sleep()
-
-        # Fly to target (horizontal) at cruise altitude
-        self._fb(goal_handle, "fly_to_target", "Flying to target")
-        nav_start_ns = self.get_clock().now().nanoseconds
-        while rclpy.ok():
-            if goal_handle.is_cancel_requested:
-                return self._cancelled(goal_handle)
-            self._pub_setpoint(target_x, target_y, cruise_alt_m)
-            dist = self._dist_xy(target_x, target_y)
-            elapsed = (self.get_clock().now().nanoseconds - nav_start_ns) / 1e9
-            self._fb(goal_handle, "fly_to_target", "%.1f m remaining" % dist)
-            if dist <= arrival_radius:
-                self.get_logger().info("Arrived at target (%.1f m)." % dist)
-                break
-            if elapsed >= wp_timeout:
-                return self._aborted(
-                    goal_handle,
-                    "Timeout flying to target (%.1f m after %.0f s)" % (dist, elapsed),
-                )
-            rate.sleep()
-
-        # Slow descent to 7 ft AGL
-        self._fb(
-            goal_handle, "descend",
-            "Descending to %.1f ft AGL" % (hover_agl / FEET_TO_METERS),
-        )
-        current_z = cruise_alt_m
-        while rclpy.ok():
-            if goal_handle.is_cancel_requested:
-                return self._cancelled(goal_handle)
-            current_z = max(current_z - descent_step, hover_agl)
-            self._pub_setpoint(target_x, target_y, current_z)
-            self._fb(
-                goal_handle, "descend",
-                "z=%.2f m → %.2f m" % (current_z, hover_agl),
+            self._publish_local_setpoint(
+                target_east_m,
+                target_north_m,
+                target_up_m,
             )
-            if current_z <= hover_agl:
-                self.get_logger().info(
-                    "Hover altitude reached (%.2f m = %.1f ft AGL)."
-                    % (hover_agl, hover_agl / FEET_TO_METERS)
+
+            current_east_m, current_north_m, current_up_m = self._local_xyz()
+            horizontal_error_m = math.hypot(
+                current_east_m - target_east_m,
+                current_north_m - target_north_m,
+            )
+            vertical_error_m = abs(current_up_m - target_up_m)
+            setpoint_error_m = math.hypot(horizontal_error_m, vertical_error_m)
+
+            now = time.monotonic()
+            if now - last_feedback_time >= 0.5:
+                self._publish_feedback(
+                    goal_handle,
+                    phase,
+                    "%.2f m from setpoint" % setpoint_error_m,
+                    progress,
+                    estimate=estimate,
+                    distance_to_release_point_m=setpoint_error_m,
                 )
-                break
-            rate.sleep()
+                last_feedback_time = now
 
-        # Hover for 5 seconds 
-        self._fb(goal_handle, "hover", "Hovering for %.0f s" % hover_dur)
-        hover_start_ns = self.get_clock().now().nanoseconds
-        while rclpy.ok():
+            if setpoint_error_m <= radius_m:
+                return True
+
+            time.sleep(SETPOINT_PERIOD_SEC)
+
+        return False
+
+    def _fly_to_approximate_target(
+        self,
+        goal_handle,
+        deadline_monotonic: float,
+        target_lat: float,
+        target_lon: float,
+    ) -> bool:
+        if self._home_lat is None or self._home_lon is None:
+            return False
+
+        target_east_m, target_north_m = gps_to_local_enu_m(
+            self._home_lat,
+            self._home_lon,
+            target_lat,
+            target_lon,
+        )
+
+        self._publish_feedback(
+            goal_handle,
+            "transit",
+            "Flying to approximate target",
+            0.25,
+        )
+        arrived = self._fly_to_local(
+            goal_handle,
+            "transit",
+            target_east_m,
+            target_north_m,
+            self._float_param("search_altitude_m"),
+            self._float_param("arrival_radius_m"),
+            deadline_monotonic,
+            0.30,
+        )
+        if arrived:
+            self._publish_feedback(
+                goal_handle,
+                "transit",
+                "Approximate target reached",
+                0.35,
+            )
+        return arrived
+
+    def _latest_cv_frame(self):
+        if self._latest_image is None:
+            return None
+
+        try:
+            return self._bridge.imgmsg_to_cv2(
+                self._latest_image,
+                desired_encoding="bgr8",
+            )
+        except Exception as exc:
+            self.get_logger().warn("Image conversion failed: %s" % str(exc))
+            return None
+
+    def _extract_target_pixel_center(self, frame) -> Optional[PixelDetection]:
+        target_class_name = self._str_param("target_class_name")
+        min_confidence = self._float_param("min_detection_confidence")
+        results = self._model.predict(frame, verbose=False)
+        best_detection: Optional[PixelDetection] = None
+
+        frame_height_px = int(frame.shape[0])
+        frame_width_px = int(frame.shape[1])
+        for result in results:
+            for i, box in enumerate(result.boxes.xyxy):
+                class_name = result.names[int(result.boxes.cls[i])]
+                confidence = float(result.boxes.conf[i])
+                if class_name != target_class_name or confidence < min_confidence:
+                    continue
+
+                x1, y1, x2, y2 = [float(v) for v in box]
+                detection = PixelDetection(
+                    x_px=0.5 * (x1 + x2),
+                    y_px=0.5 * (y1 + y2),
+                    confidence=confidence,
+                    frame_width_px=frame_width_px,
+                    frame_height_px=frame_height_px,
+                )
+                if best_detection is None or detection.confidence > best_detection.confidence:
+                    best_detection = detection
+
+        return best_detection
+
+    def _pixel_detection_to_target_estimate(
+        self,
+        detection: PixelDetection,
+    ) -> Optional[TargetEstimate]:
+        if self._home_lat is None or self._home_lon is None:
+            return None
+        if self._local_pose is None:
+            return None
+        if detection.frame_width_px <= 0 or detection.frame_height_px <= 0:
+            return None
+
+        horizontal_fov_rad = math.radians(self._float_param("camera_horizontal_fov_deg"))
+        vertical_fov_rad = math.radians(self._float_param("camera_vertical_fov_deg"))
+        fx_px = detection.frame_width_px / (2.0 * math.tan(horizontal_fov_rad / 2.0))
+        fy_px = detection.frame_height_px / (2.0 * math.tan(vertical_fov_rad / 2.0))
+        center_x_px = detection.frame_width_px / 2.0
+        center_y_px = detection.frame_height_px / 2.0
+
+        x_norm = (detection.x_px - center_x_px) / fx_px
+        y_norm = (detection.y_px - center_y_px) / fy_px
+
+        vehicle_up_m = float(self._local_pose.pose.position.z)
+        camera_up_m = vehicle_up_m + self._float_param("camera_up_offset_m")
+        if camera_up_m <= 0.2:
+            return None
+
+        # v1 nadir assumption:
+        # +x image is body-right, so body-left is negative.
+        # +y image is body-back, so body-forward is negative.
+        target_forward_from_camera_m = -camera_up_m * y_norm
+        target_left_from_camera_m = -camera_up_m * x_norm
+        target_forward_from_vehicle_m = (
+            self._float_param("camera_forward_offset_m")
+            + target_forward_from_camera_m
+        )
+        target_left_from_vehicle_m = (
+            self._float_param("camera_left_offset_m")
+            + target_left_from_camera_m
+        )
+        target_offset_east_m, target_offset_north_m = body_offset_to_enu_m(
+            target_forward_from_vehicle_m,
+            target_left_from_vehicle_m,
+            self._heading_deg,
+        )
+
+        current_east_m, current_north_m, _ = self._local_xyz()
+        target_east_m = current_east_m + target_offset_east_m
+        target_north_m = current_north_m + target_offset_north_m
+        target_lat, target_lon = local_enu_to_gps(
+            self._home_lat,
+            self._home_lon,
+            target_east_m,
+            target_north_m,
+        )
+        return TargetEstimate(
+            latitude_deg=target_lat,
+            longitude_deg=target_lon,
+            confidence=float(detection.confidence),
+            source_distance_m=math.hypot(target_offset_east_m, target_offset_north_m),
+            pixel_x_px=float(detection.x_px),
+            pixel_y_px=float(detection.y_px),
+        )
+
+    def _aggregate_estimates(
+        self,
+        estimates: list[TargetEstimate],
+    ) -> Optional[TargetEstimate]:
+        if not estimates:
+            return None
+
+        base = estimates[-1]
+        weighted_east = []
+        weighted_north = []
+        weights = []
+        for estimate in estimates:
+            east_m, north_m = gps_to_local_enu_m(
+                base.latitude_deg,
+                base.longitude_deg,
+                estimate.latitude_deg,
+                estimate.longitude_deg,
+            )
+            weight = max(1e-3, estimate.confidence)
+            weighted_east.append(east_m)
+            weighted_north.append(north_m)
+            weights.append(weight)
+
+        weight_sum = sum(weights)
+        mean_east = sum(e * w for e, w in zip(weighted_east, weights)) / weight_sum
+        mean_north = sum(n * w for n, w in zip(weighted_north, weights)) / weight_sum
+        mean_confidence = sum(e.confidence * w for e, w in zip(estimates, weights)) / weight_sum
+        lat, lon = local_enu_to_gps(
+            base.latitude_deg,
+            base.longitude_deg,
+            mean_east,
+            mean_north,
+        )
+        latest = estimates[-1]
+        return TargetEstimate(
+            latitude_deg=lat,
+            longitude_deg=lon,
+            confidence=mean_confidence,
+            pixel_x_px=latest.pixel_x_px,
+            pixel_y_px=latest.pixel_y_px,
+        )
+
+    def _estimate_spread_m(
+        self,
+        estimates: list[TargetEstimate],
+        center: TargetEstimate,
+    ) -> float:
+        if not estimates:
+            return float("inf")
+        return max(
+            horizontal_distance_m(
+                center.latitude_deg,
+                center.longitude_deg,
+                estimate.latitude_deg,
+                estimate.longitude_deg,
+            )
+            for estimate in estimates
+        )
+
+    def _detect_bullseye_center(
+        self,
+        goal_handle,
+        deadline_monotonic: float,
+    ) -> Optional[TargetEstimate]:
+        detection_deadline = min(
+            deadline_monotonic,
+            time.monotonic() + self._float_param("detection_timeout_sec"),
+        )
+        required_estimates = max(1, self._int_param("required_estimates"))
+        max_spread_m = self._float_param("max_estimate_spread_m")
+        estimates: list[TargetEstimate] = []
+        last_feedback_time = time.monotonic() - 1.0
+
+        while rclpy.ok() and time.monotonic() < detection_deadline:
             if goal_handle.is_cancel_requested:
-                return self._cancelled(goal_handle)
-            self._pub_setpoint(target_x, target_y, hover_agl)
-            elapsed = (self.get_clock().now().nanoseconds - hover_start_ns) / 1e9
-            self._fb(goal_handle, "hover", "%.1f / %.0f s" % (elapsed, hover_dur))
-            if elapsed >= hover_dur:
-                break
-            rate.sleep()
+                return None
 
-        # Return home <3
-        self._fb(goal_handle, "rtl", "Requesting AUTO.RTL")
-        self._set_mode_async("AUTO.RTL")
-        self.get_logger().info("AUTO.RTL requested. Mission complete.")
+            frame = self._latest_cv_frame()
+            if frame is None:
+                time.sleep(0.05)
+                continue
 
-        r = StartPayloadDrop.Result()
-        r.success = True
-        r.message = "Mission complete. RTL initiated."
-        goal_handle.succeed(r)
-        return r
+            pixel_detection = self._extract_target_pixel_center(frame)
+            if pixel_detection is not None:
+                estimate = self._pixel_detection_to_target_estimate(pixel_detection)
+                if estimate is not None:
+                    estimates.append(estimate)
+                    keep_count = max(required_estimates * 3, required_estimates)
+                    estimates = estimates[-keep_count:]
+
+            aggregate = self._aggregate_estimates(estimates)
+            if aggregate is not None:
+                spread_m = self._estimate_spread_m(estimates, aggregate)
+                self._publish_feedback(
+                    goal_handle,
+                    "detect_target",
+                    "%d estimates, spread %.2f m" % (len(estimates), spread_m),
+                    0.55,
+                    estimate=aggregate,
+                )
+                if len(estimates) >= required_estimates and spread_m <= max_spread_m:
+                    return aggregate
+            else:
+                now = time.monotonic()
+                if now - last_feedback_time >= 1.0:
+                    self._publish_feedback(
+                        goal_handle,
+                        "detect_target",
+                        "Searching for target in image",
+                        0.45,
+                    )
+                    last_feedback_time = now
+
+            time.sleep(0.05)
+
+        return self._aggregate_estimates(estimates)
+
+    def _safe_drop_hover_agl_m(self) -> float:
+        min_agl_m = self._float_param("minimum_drop_agl_m")
+        requested_agl_m = self._float_param("drop_hover_agl_m")
+        if requested_agl_m < min_agl_m:
+            self.get_logger().warn(
+                "drop_hover_agl_m %.2f is below minimum %.2f; clamping."
+                % (requested_agl_m, min_agl_m)
+            )
+            return min_agl_m
+        return requested_agl_m
+
+    def _release_point_for_target_gps(
+        self,
+        target_lat: float,
+        target_lon: float,
+    ) -> tuple[float, float]:
+        assert self._home_lat is not None
+        assert self._home_lon is not None
+
+        release_offset_east_m, release_offset_north_m = body_offset_to_enu_m(
+            self._float_param("release_forward_offset_m"),
+            self._float_param("release_left_offset_m"),
+            self._heading_deg,
+        )
+        command_origin_east_m, command_origin_north_m = gps_to_local_enu_m(
+            self._home_lat,
+            self._home_lon,
+            target_lat,
+            target_lon,
+        )
+        command_origin_east_m -= release_offset_east_m
+        command_origin_north_m -= release_offset_north_m
+        return local_enu_to_gps(
+            self._home_lat,
+            self._home_lon,
+            command_origin_east_m,
+            command_origin_north_m,
+        )
+
+    def _fly_to_release_point(
+        self,
+        goal_handle,
+        estimate: TargetEstimate,
+        release_lat: float,
+        release_lon: float,
+        deadline_monotonic: float,
+    ) -> bool:
+        assert self._home_lat is not None
+        assert self._home_lon is not None
+
+        release_east_m, release_north_m = gps_to_local_enu_m(
+            self._home_lat,
+            self._home_lon,
+            release_lat,
+            release_lon,
+        )
+        self._publish_feedback(
+            goal_handle,
+            "precision_approach",
+            "Moving release point over target",
+            0.70,
+            estimate=estimate,
+        )
+        return self._fly_to_local(
+            goal_handle,
+            "precision_approach",
+            release_east_m,
+            release_north_m,
+            self._safe_drop_hover_agl_m(),
+            self._float_param("release_radius_m"),
+            deadline_monotonic,
+            0.78,
+            estimate=estimate,
+        )
+
+    def _settle_before_release(
+        self,
+        goal_handle,
+        estimate: TargetEstimate,
+        release_lat: float,
+        release_lon: float,
+        deadline_monotonic: float,
+    ) -> bool:
+        assert self._home_lat is not None
+        assert self._home_lon is not None
+
+        release_east_m, release_north_m = gps_to_local_enu_m(
+            self._home_lat,
+            self._home_lon,
+            release_lat,
+            release_lon,
+        )
+        drop_alt_m = self._safe_drop_hover_agl_m()
+        release_radius_m = self._float_param("release_radius_m")
+        settle_time_sec = self._float_param("settle_time_sec")
+        stable_since: Optional[float] = None
+        last_feedback_time = time.monotonic() - 0.5
+
+        while rclpy.ok() and time.monotonic() < deadline_monotonic:
+            if goal_handle.is_cancel_requested:
+                return False
+
+            self._publish_local_setpoint(
+                release_east_m,
+                release_north_m,
+                drop_alt_m,
+            )
+            current_east_m, current_north_m, current_up_m = self._local_xyz()
+            horizontal_error_m = math.hypot(
+                current_east_m - release_east_m,
+                current_north_m - release_north_m,
+            )
+            vertical_error_m = abs(current_up_m - drop_alt_m)
+            setpoint_error_m = math.hypot(horizontal_error_m, vertical_error_m)
+
+            now = time.monotonic()
+            if setpoint_error_m <= release_radius_m:
+                if stable_since is None:
+                    stable_since = now
+                if now - stable_since >= settle_time_sec:
+                    self._publish_feedback(
+                        goal_handle,
+                        "settle",
+                        "Settled over release point",
+                        0.86,
+                        estimate=estimate,
+                        distance_to_release_point_m=setpoint_error_m,
+                    )
+                    return True
+            else:
+                stable_since = None
+
+            if now - last_feedback_time >= 0.5:
+                self._publish_feedback(
+                    goal_handle,
+                    "settle",
+                    "%.2f m from release point" % setpoint_error_m,
+                    0.84,
+                    estimate=estimate,
+                    distance_to_release_point_m=setpoint_error_m,
+                )
+                last_feedback_time = now
+
+            time.sleep(SETPOINT_PERIOD_SEC)
+
+        return False
+
+    def _trigger_release(
+        self,
+        goal_handle,
+        estimate: TargetEstimate,
+    ) -> tuple[bool, bool]:
+        self._publish_feedback(
+            goal_handle,
+            "release",
+            "Triggering payload release",
+            0.90,
+            estimate=estimate,
+        )
+
+        if not self._bool_param("release_enabled"):
+            self.get_logger().warn("Release disabled; treating as dry-run success.")
+            return True, False
+
+        channel = self._int_param("release_servo_channel")
+        if channel <= 0:
+            self.get_logger().error("release_servo_channel must be configured.")
+            return False, False
+
+        if not self._release_client.wait_for_service(timeout_sec=5.0):
+            self.get_logger().error("Release command service unavailable.")
+            return False, False
+
+        if not self._send_servo_command(channel, self._float_param("release_pwm")):
+            return False, False
+
+        time.sleep(max(0.0, self._float_param("release_pulse_sec")))
+
+        reset_pwm = self._float_param("release_reset_pwm")
+        if reset_pwm > 0.0:
+            return self._send_servo_command(channel, reset_pwm), True
+        return True, True
+
+    def _send_servo_command(self, channel: int, pwm: float) -> bool:
+        req = CommandLong.Request()
+        req.broadcast = False
+        req.command = MAV_CMD_DO_SET_SERVO
+        req.confirmation = 0
+        req.param1 = float(channel)
+        req.param2 = float(pwm)
+        req.param3 = 0.0
+        req.param4 = 0.0
+        req.param5 = 0.0
+        req.param6 = 0.0
+        req.param7 = 0.0
+
+        future = self._release_client.call_async(req)
+        deadline = time.monotonic() + 5.0
+        while rclpy.ok() and not future.done() and time.monotonic() < deadline:
+            time.sleep(0.02)
+
+        if not future.done():
+            self.get_logger().error("Release servo command timed out.")
+            return False
+
+        try:
+            response = future.result()
+        except Exception as exc:
+            self.get_logger().error("Release servo command failed: %s" % str(exc))
+            return False
+
+        if not response.success:
+            self.get_logger().error("Release servo command rejected.")
+            return False
+        return True
+
+    def _hold_after_release(
+        self,
+        goal_handle,
+        estimate: TargetEstimate,
+        release_lat: float,
+        release_lon: float,
+    ) -> None:
+        assert self._home_lat is not None
+        assert self._home_lon is not None
+
+        release_east_m, release_north_m = gps_to_local_enu_m(
+            self._home_lat,
+            self._home_lon,
+            release_lat,
+            release_lon,
+        )
+        drop_alt_m = self._safe_drop_hover_agl_m()
+        hold_deadline = time.monotonic() + self._float_param("post_release_hold_sec")
+        while rclpy.ok() and time.monotonic() < hold_deadline:
+            if goal_handle.is_cancel_requested:
+                return
+            self._publish_local_setpoint(
+                release_east_m,
+                release_north_m,
+                drop_alt_m,
+            )
+            self._publish_feedback(
+                goal_handle,
+                "post_release_hold",
+                "Holding after payload release",
+                0.95,
+                estimate=estimate,
+            )
+            time.sleep(SETPOINT_PERIOD_SEC)
 
 
 def main(args=None):

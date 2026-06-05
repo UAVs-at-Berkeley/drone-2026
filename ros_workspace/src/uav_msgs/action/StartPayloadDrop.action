@@ -1,14 +1,30 @@
-# Goal: start autonomous payload-drop routine
-float64 target_latitude_deg    # target GPS latitude (decimal degrees)
-float64 target_longitude_deg   # target GPS longitude (decimal degrees)
-float64 cruise_altitude_m      # altitude above home to cruise and fly to target (meters)
+# Goal: start autonomous payload-drop routine.
+bool start
+float64 red_target_latitude_deg
+float64 red_target_longitude_deg
+float64 red_target_altitude_m
 
 ---
 # Result
 bool success
 string message
+float64 final_target_latitude_deg
+float64 final_target_longitude_deg
+float64 release_latitude_deg
+float64 release_longitude_deg
+float64 final_confidence
+bool release_commanded
+float64 detected_pixel_x
+float64 detected_pixel_y
 
 ---
 # Feedback
 string phase
 string detail
+float64 progress
+float64 estimated_target_latitude_deg
+float64 estimated_target_longitude_deg
+float64 confidence
+float64 distance_to_release_point_m
+float64 detected_pixel_x
+float64 detected_pixel_y
