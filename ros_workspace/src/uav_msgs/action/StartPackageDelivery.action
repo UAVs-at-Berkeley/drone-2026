@@ -1,5 +1,8 @@
 # Goal
 bool start
+float64 red_target_latitude_deg
+float64 red_target_longitude_deg
+float64 red_target_altitude_m
 
 ---
 # Result

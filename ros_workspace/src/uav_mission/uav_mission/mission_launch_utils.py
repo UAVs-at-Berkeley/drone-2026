@@ -61,6 +61,8 @@ def mission_parameter_bundle(context) -> Dict[str, Dict[str, Any]]:
         # (via mission_loader + goals from central_command), not ROS parameters.
         "time_trial": {},
         "payload_drop": {
+            "target_latitude_deg": red["lat"],
+            "target_longitude_deg": red["lon"],
             "red_target_latitude_deg": red["lat"],
             "red_target_longitude_deg": red["lon"],
             "red_target_altitude_m": red["alt"],

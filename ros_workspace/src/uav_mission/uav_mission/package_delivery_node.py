@@ -4,7 +4,7 @@ Package Delivery Node - v1 bullseye package-delivery mission.
 
 Central Command only triggers this action. This node owns target detection,
 simple nadir pixel-to-ground projection, estimate aggregation, precision
-approach, low-altitude release, and post-release hold.
+approach, landing on the target, and optional post-landing release.
 """
 
 from __future__ import annotations
@@ -18,8 +18,8 @@ from typing import Optional
 import rclpy
 from cv_bridge import CvBridge
 from geometry_msgs.msg import PoseStamped, Quaternion
-from mavros_msgs.msg import HomePosition, State
-from mavros_msgs.srv import CommandLong
+from mavros_msgs.msg import ExtendedState, HomePosition, State
+from mavros_msgs.srv import CommandLong, CommandTOL
 from rclpy.action import ActionClient, ActionServer
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
@@ -36,6 +36,7 @@ EARTH_RADIUS_M = 6_378_137.0
 SETPOINT_RATE_HZ = 20.0
 SETPOINT_PERIOD_SEC = 1.0 / SETPOINT_RATE_HZ
 MAV_CMD_DO_SET_SERVO = 183
+LANDED_STATE_ON_GROUND = 1
 
 DEFAULT_TARGET_LAT = 35.049803
 DEFAULT_TARGET_LON = -118.150986
@@ -115,6 +116,7 @@ class PackageDeliveryNode(Node):
         self._heading_deg = 0.0
         self._latest_image: Optional[Image] = None
         self._latest_gimbal: Optional[GimbalStatus] = None
+        self._landed_state: Optional[int] = None
         self._home_lat: Optional[float] = None
         self._home_lon: Optional[float] = None
 
@@ -124,11 +126,12 @@ class PackageDeliveryNode(Node):
         self.declare_parameter("target_longitude_deg", DEFAULT_TARGET_LON)
         self.declare_parameter("mission_timeout_sec", 180.0)
         self.declare_parameter("search_altitude_m", 8.0)
+        # Pre-landing hover used to stabilize over the bullseye before commanding land.
         self.declare_parameter("release_hover_agl_m", 0.5)
         self.declare_parameter("arrival_radius_m", 1.0)
         self.declare_parameter("release_radius_m", 0.35)
         self.declare_parameter("settle_time_sec", 2.0)
-        self.declare_parameter("post_release_hold_sec", 2.0)
+        self.declare_parameter("post_delivery_hold_sec", 2.0)
         self.declare_parameter("detection_timeout_sec", 45.0)
         self.declare_parameter("required_estimates", 8)
         self.declare_parameter("max_estimate_spread_m", 0.75)
@@ -151,6 +154,13 @@ class PackageDeliveryNode(Node):
         self.declare_parameter("release_reset_pwm", 1100.0)
         self.declare_parameter("release_pulse_sec", 0.75)
         self.declare_parameter("release_command_service", "/mavros/cmd/command")
+
+        self.declare_parameter("land_at_target_enabled", True)
+        self.declare_parameter("land_command_service", "/mavros/cmd/land")
+        self.declare_parameter("land_timeout_sec", 30.0)
+        self.declare_parameter("landing_complete_altitude_m", 0.15)
+        self.declare_parameter("landing_min_pitch", 0.0)
+        self.declare_parameter("landing_yaw", 0.0)
 
         self.declare_parameter("camera_action", "/camera/move")
         self.declare_parameter("camera_nadir_pitch_deg", -90.0)
@@ -177,6 +187,13 @@ class PackageDeliveryNode(Node):
             State,
             "/mavros/state",
             self._state_callback,
+            sensor_qos,
+            callback_group=self._cb_group,
+        )
+        self.create_subscription(
+            ExtendedState,
+            "/mavros/extended_state",
+            self._extended_state_callback,
             sensor_qos,
             callback_group=self._cb_group,
         )
@@ -232,6 +249,11 @@ class PackageDeliveryNode(Node):
             self._str_param("release_command_service"),
             callback_group=self._cb_group,
         )
+        self._land_client = self.create_client(
+            CommandTOL,
+            self._str_param("land_command_service"),
+            callback_group=self._cb_group,
+        )
         self._action_server = ActionServer(
             self,
             StartPackageDelivery,
@@ -254,6 +276,15 @@ class PackageDeliveryNode(Node):
     def _str_param(self, name: str) -> str:
         return str(self.get_parameter(name).value)
 
+    def _goal_red_target(self, request) -> tuple[float, float, float]:
+        lat = float(getattr(request, "red_target_latitude_deg", 0.0))
+        lon = float(getattr(request, "red_target_longitude_deg", 0.0))
+        alt = float(getattr(request, "red_target_altitude_m", 0.0))
+        if abs(lat) < 1e-9 and abs(lon) < 1e-9:
+            lat = self._float_param("target_latitude_deg")
+            lon = self._float_param("target_longitude_deg")
+        return lat, lon, alt
+
     def _home_position_callback(self, msg: HomePosition) -> None:
         if self._home_lat is not None and self._home_lon is not None:
             return
@@ -266,6 +297,9 @@ class PackageDeliveryNode(Node):
 
     def _state_callback(self, msg: State) -> None:
         self._state = msg
+
+    def _extended_state_callback(self, msg: ExtendedState) -> None:
+        self._landed_state = int(msg.landed_state)
 
     def _gps_callback(self, msg: NavSatFix) -> None:
         self._gps = msg
@@ -355,6 +389,7 @@ class PackageDeliveryNode(Node):
         if not bool(goal_handle.request.start):
             return self._abort(goal_handle, "StartPackageDelivery had start=false")
 
+        target_lat, target_lon, _target_alt = self._goal_red_target(goal_handle.request)
         mission_timeout_sec = self._float_param("mission_timeout_sec")
         deadline_monotonic = time.monotonic() + mission_timeout_sec
         self._publish_feedback(
@@ -374,7 +409,12 @@ class PackageDeliveryNode(Node):
                 return self._cancel(goal_handle)
             return self._abort(goal_handle, "Failed to point camera nadir")
 
-        if not self._fly_to_approximate_target(goal_handle, deadline_monotonic):
+        if not self._fly_to_approximate_target(
+            goal_handle,
+            deadline_monotonic,
+            target_lat,
+            target_lon,
+        ):
             if goal_handle.is_cancel_requested:
                 return self._cancel(goal_handle)
             return self._abort(goal_handle, "Failed to reach approximate target")
@@ -400,13 +440,13 @@ class PackageDeliveryNode(Node):
                 return self._cancel(goal_handle)
             return self._abort(
                 goal_handle,
-                "Failed to reach release point",
+                "Failed to reach delivery point",
                 estimate=estimate,
                 release_latitude_deg=release_lat,
                 release_longitude_deg=release_lon,
             )
 
-        if not self._settle_before_release(
+        if not self._settle_before_landing(
             goal_handle,
             estimate,
             release_lat,
@@ -417,7 +457,24 @@ class PackageDeliveryNode(Node):
                 return self._cancel(goal_handle)
             return self._abort(
                 goal_handle,
-                "Failed to settle before release",
+                "Failed to settle before landing",
+                estimate=estimate,
+                release_latitude_deg=release_lat,
+                release_longitude_deg=release_lon,
+            )
+
+        if not self._land_at_target(
+            goal_handle,
+            estimate,
+            release_lat,
+            release_lon,
+            deadline_monotonic,
+        ):
+            if goal_handle.is_cancel_requested:
+                return self._cancel(goal_handle)
+            return self._abort(
+                goal_handle,
+                "Failed to land at target",
                 estimate=estimate,
                 release_latitude_deg=release_lat,
                 release_longitude_deg=release_lon,
@@ -434,11 +491,11 @@ class PackageDeliveryNode(Node):
                 release_commanded=release_commanded,
             )
 
-        self._hold_after_release(goal_handle, estimate, release_lat, release_lon)
+        self._post_delivery_hold(goal_handle, estimate)
 
-        message = "Package delivery mission completed"
+        message = "Package delivery mission landed at target"
         if not release_commanded:
-            message = "Package delivery mission completed with release disabled"
+            message = "Package delivery mission landed at target with release disabled"
         result = self._make_result(
             True,
             message,
@@ -638,12 +695,16 @@ class PackageDeliveryNode(Node):
 
         return False
 
-    def _fly_to_approximate_target(self, goal_handle, deadline_monotonic: float) -> bool:
+    def _fly_to_approximate_target(
+        self,
+        goal_handle,
+        deadline_monotonic: float,
+        target_lat: float,
+        target_lon: float,
+    ) -> bool:
         if self._home_lat is None or self._home_lon is None:
             return False
 
-        target_lat = self._float_param("target_latitude_deg")
-        target_lon = self._float_param("target_longitude_deg")
         target_east_m, target_north_m = gps_to_local_enu_m(
             self._home_lat,
             self._home_lon,
@@ -898,7 +959,7 @@ class PackageDeliveryNode(Node):
         assert self._home_lat is not None
         assert self._home_lon is not None
 
-        release_offset_east_m, release_offset_north_m = body_offset_to_enu_m(
+        delivery_offset_east_m, delivery_offset_north_m = body_offset_to_enu_m(
             self._float_param("release_forward_offset_m"),
             self._float_param("release_left_offset_m"),
             self._heading_deg,
@@ -909,8 +970,8 @@ class PackageDeliveryNode(Node):
             target_lat,
             target_lon,
         )
-        command_origin_east_m -= release_offset_east_m
-        command_origin_north_m -= release_offset_north_m
+        command_origin_east_m -= delivery_offset_east_m
+        command_origin_north_m -= delivery_offset_north_m
         return local_enu_to_gps(
             self._home_lat,
             self._home_lon,
@@ -938,7 +999,7 @@ class PackageDeliveryNode(Node):
         self._publish_feedback(
             goal_handle,
             "precision_approach",
-            "Moving release point over target",
+            "Moving delivery point over target",
             0.70,
             estimate=estimate,
         )
@@ -954,7 +1015,7 @@ class PackageDeliveryNode(Node):
             estimate=estimate,
         )
 
-    def _settle_before_release(
+    def _settle_before_landing(
         self,
         goal_handle,
         estimate: TargetEstimate,
@@ -1002,7 +1063,7 @@ class PackageDeliveryNode(Node):
                     self._publish_feedback(
                         goal_handle,
                         "settle",
-                        "Settled over release point",
+                        "Settled over target before landing",
                         0.86,
                         estimate=estimate,
                         distance_to_release_point_m=setpoint_error_m,
@@ -1015,7 +1076,7 @@ class PackageDeliveryNode(Node):
                 self._publish_feedback(
                     goal_handle,
                     "settle",
-                    "%.2f m from release point" % setpoint_error_m,
+                    "%.2f m from landing point" % setpoint_error_m,
                     0.84,
                     estimate=estimate,
                     distance_to_release_point_m=setpoint_error_m,
@@ -1023,6 +1084,112 @@ class PackageDeliveryNode(Node):
                 last_feedback_time = now
 
             time.sleep(SETPOINT_PERIOD_SEC)
+
+        return False
+
+    def _land_at_target(
+        self,
+        goal_handle,
+        estimate: TargetEstimate,
+        release_lat: float,
+        release_lon: float,
+        deadline_monotonic: float,
+    ) -> bool:
+        if not self._bool_param("land_at_target_enabled"):
+            self.get_logger().warn("Target landing disabled; remaining in low hover.")
+            return True
+
+        self._publish_feedback(
+            goal_handle,
+            "landing",
+            "Commanding land at target",
+            0.88,
+            estimate=estimate,
+            distance_to_release_point_m=0.0,
+        )
+
+        if not self._land_client.wait_for_service(timeout_sec=5.0):
+            self.get_logger().error("Land command service unavailable.")
+            return False
+
+        req = CommandTOL.Request()
+        req.min_pitch = self._float_param("landing_min_pitch")
+        req.yaw = self._float_param("landing_yaw")
+        req.latitude = float("nan")
+        req.longitude = float("nan")
+        req.altitude = 0.0
+
+        future = self._land_client.call_async(req)
+        command_deadline = min(deadline_monotonic, time.monotonic() + 5.0)
+        while rclpy.ok() and not future.done() and time.monotonic() < command_deadline:
+            if goal_handle.is_cancel_requested:
+                return False
+            time.sleep(0.02)
+
+        if not future.done():
+            self.get_logger().error("Land command timed out.")
+            return False
+
+        try:
+            response = future.result()
+        except Exception as exc:
+            self.get_logger().error("Land command failed: %s" % str(exc))
+            return False
+
+        if not response.success:
+            self.get_logger().error("Land command rejected.")
+            return False
+
+        landing_deadline = min(
+            deadline_monotonic,
+            time.monotonic() + self._float_param("land_timeout_sec"),
+        )
+        last_feedback_time = time.monotonic() - 0.5
+        while rclpy.ok() and time.monotonic() < landing_deadline:
+            if goal_handle.is_cancel_requested:
+                return False
+
+            if self._landed_state == LANDED_STATE_ON_GROUND:
+                self._publish_feedback(
+                    goal_handle,
+                    "landing",
+                    "Landed at target",
+                    0.92,
+                    estimate=estimate,
+                    distance_to_release_point_m=0.0,
+                )
+                return True
+
+            current_alt_m = None
+            if self._local_pose is not None:
+                current_alt_m = float(self._local_pose.pose.position.z)
+                if current_alt_m <= self._float_param("landing_complete_altitude_m"):
+                    self._publish_feedback(
+                        goal_handle,
+                        "landing",
+                        "Landing altitude reached",
+                        0.92,
+                        estimate=estimate,
+                        distance_to_release_point_m=0.0,
+                    )
+                    return True
+
+            now = time.monotonic()
+            if now - last_feedback_time >= 0.5:
+                detail = "Waiting for touchdown"
+                if current_alt_m is not None:
+                    detail = "Landing, altitude %.2f m" % current_alt_m
+                self._publish_feedback(
+                    goal_handle,
+                    "landing",
+                    detail,
+                    0.90,
+                    estimate=estimate,
+                    distance_to_release_point_m=0.0,
+                )
+                last_feedback_time = now
+
+            time.sleep(0.05)
 
         return False
 
@@ -1034,8 +1201,8 @@ class PackageDeliveryNode(Node):
         self._publish_feedback(
             goal_handle,
             "release",
-            "Triggering release",
-            0.90,
+            "Triggering post-landing release",
+            0.94,
             estimate=estimate,
         )
 
@@ -1095,40 +1262,23 @@ class PackageDeliveryNode(Node):
             return False
         return True
 
-    def _hold_after_release(
+    def _post_delivery_hold(
         self,
         goal_handle,
         estimate: TargetEstimate,
-        release_lat: float,
-        release_lon: float,
     ) -> None:
-        assert self._home_lat is not None
-        assert self._home_lon is not None
-
-        release_east_m, release_north_m = gps_to_local_enu_m(
-            self._home_lat,
-            self._home_lon,
-            release_lat,
-            release_lon,
-        )
-        release_alt_m = self._float_param("release_hover_agl_m")
-        hold_deadline = time.monotonic() + self._float_param("post_release_hold_sec")
+        hold_deadline = time.monotonic() + self._float_param("post_delivery_hold_sec")
         while rclpy.ok() and time.monotonic() < hold_deadline:
             if goal_handle.is_cancel_requested:
                 return
-            self._publish_local_setpoint(
-                release_east_m,
-                release_north_m,
-                release_alt_m,
-            )
             self._publish_feedback(
                 goal_handle,
-                "post_release_hold",
-                "Holding after release",
-                0.95,
+                "post_delivery_hold",
+                "Holding after delivery",
+                0.97,
                 estimate=estimate,
             )
-            time.sleep(SETPOINT_PERIOD_SEC)
+            time.sleep(0.2)
 
 
 def main(args=None):

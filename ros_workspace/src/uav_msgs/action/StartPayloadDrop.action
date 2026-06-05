@@ -1,6 +1,8 @@
 # Goal: start autonomous payload-drop routine.
-# Mission-specific behavior is configured with ROS parameters on payload_drop_node.
 bool start
+float64 red_target_latitude_deg
+float64 red_target_longitude_deg
+float64 red_target_altitude_m
 
 ---
 # Result
