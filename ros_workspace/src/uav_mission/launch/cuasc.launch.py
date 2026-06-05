@@ -189,6 +189,10 @@ def _mission_nodes(context, *args, **kwargs):
             output="screen",
             parameters=[
                 {"use_sim_time": use_sim_time},
+            ],
+        ),
+        Node(
+            package="uav_mission",
             executable="geofence_monitor_node",
             name="geofence_monitor_node",
             output="screen",
