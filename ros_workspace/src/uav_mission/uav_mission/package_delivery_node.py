@@ -144,7 +144,7 @@ class PackageDeliveryNode(Node):
         # +forward is toward drone nose, +left is toward drone left, +up is above reference.
         self.declare_parameter("camera_forward_offset_m", 0.20)
         self.declare_parameter("camera_left_offset_m", 0.0)
-        self.declare_parameter("camera_up_offset_m", 0.0)
+        self.declare_parameter("camera_up_offset_m", -0.15)
         self.declare_parameter("release_forward_offset_m", 0.0)
         self.declare_parameter("release_left_offset_m", 0.0)
 
