@@ -2,6 +2,9 @@
 """
 Offboard takeoff action server — MAVROS offboard prime, OFFBOARD mode, arm, climb to goal altitude.
 
+Goal altitude is relative to the mavlink home (takeoff) position: local ENU z on
+/mavros/setpoint_position/local and /mavros/local_position/pose, not AMSL.
+
 After FC connects, optionally sends MoveCamera (/camera/move) to set initial gimbal pitch
 (default -60 deg, yaw/roll from last /gimbal_status when available).
 

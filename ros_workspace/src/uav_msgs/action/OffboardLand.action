@@ -1,4 +1,4 @@
-# Goal: MAVROS land command (see mavros_msgs/srv/CommandTOL)
+# Goal: land request (PX4 AUTO.LAND via /mavros/set_mode; min_pitch/yaw unused)
 float64 min_pitch
 float64 yaw
 ---
