@@ -5,9 +5,11 @@ Waypoint Node - action server that flies a predetermined list of waypoints via M
 - Receives RunWaypointMission goal from Central Command (placeholder trigger).
 - Loads waypoints from ROS params (waypoint_lats, waypoint_lons, waypoint_alts, waypoint_yaws)
   or a single "waypoints" list of {lat, lon, alt, yaw} dicts.
-- Flies waypoints in sequence: publishes each target to /mavros/setpoint_position/global
-  (geographic_msgs/GeoPoseStamped) and does not advance until the drone is sufficiently
-  close (arrival_radius_m) using /mavros/global_position/global (sensor_msgs/NavSatFix).
+- Waypoint altitudes are relative to the mavlink home (takeoff) position, not AMSL.
+- Flies waypoints in sequence: publishes each target to /mavros/setpoint_raw/global
+  (mavros_msgs/GlobalPositionTarget, FRAME_GLOBAL_REL_ALT) and does not advance until
+  the drone is sufficiently close (arrival_radius_m) using lat/lon from
+  /mavros/global_position/global and altitude from /mavros/global_position/rel_alt.
 - Sends feedback: current_waypoint_index, total_waypoints, phase.
 """
 
@@ -18,23 +20,12 @@ from rclpy.action import ActionServer
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 from uav_msgs.action import RunWaypointMission
 from sensor_msgs.msg import NavSatFix
-from geographic_msgs.msg import GeoPoseStamped, GeoPose, GeoPoint
-from geometry_msgs.msg import Quaternion
+from mavros_msgs.msg import GlobalPositionTarget
+from std_msgs.msg import Float64
 
 
 # Approximate meters per degree at mid-latitudes (for horizontal distance)
 M_PER_DEG_LAT = 111320.0
-
-
-def yaw_deg_to_quaternion(yaw_deg: float) -> Quaternion:
-    """Convert yaw in degrees to a quaternion (rotation about ENU Z-axis)."""
-    half_yaw = math.radians(yaw_deg) * 0.5
-    q = Quaternion()
-    q.x = 0.0
-    q.y = 0.0
-    q.z = math.sin(half_yaw)
-    q.w = math.cos(half_yaw)
-    return q
 
 
 def horizontal_distance_m(
@@ -98,7 +89,10 @@ class WaypointNode(Node):
             "position_topic", "/mavros/global_position/global"
         )
         self.declare_parameter(
-            "setpoint_topic", "/mavros/setpoint_position/global"
+            "setpoint_topic", "/mavros/setpoint_raw/global"
+        )
+        self.declare_parameter(
+            "rel_alt_topic", "/mavros/global_position/rel_alt"
         )
 
         # Waypoints from params (set via YAML: waypoint_lats, waypoint_lons, waypoint_alts, waypoint_yaws)
@@ -108,7 +102,7 @@ class WaypointNode(Node):
         self.declare_parameter("waypoint_yaws", [])
 
         self._setpoint_pub = self.create_publisher(
-            GeoPoseStamped,
+            GlobalPositionTarget,
             self.get_parameter("setpoint_topic").value,
             10,
         )
@@ -120,12 +114,18 @@ class WaypointNode(Node):
         )
         self._current_lat = None
         self._current_lon = None
-        self._current_alt = None
+        self._current_rel_alt = None
         self._position_received = False
         self._position_sub = self.create_subscription(
             NavSatFix,
             self.get_parameter("position_topic").value,
             self._on_global_position,
+            qos_sensor,
+        )
+        self._rel_alt_sub = self.create_subscription(
+            Float64,
+            self.get_parameter("rel_alt_topic").value,
+            self._on_rel_alt,
             qos_sensor,
         )
 
@@ -143,34 +143,47 @@ class WaypointNode(Node):
     def _on_global_position(self, msg: NavSatFix):
         self._current_lat = msg.latitude
         self._current_lon = msg.longitude
-        self._current_alt = msg.altitude if not math.isnan(msg.altitude) else 0.0
         self._position_received = True
+
+    def _on_rel_alt(self, msg: Float64):
+        self._current_rel_alt = float(msg.data)
 
     def _publish_setpoint(
         self, lat_deg: float, lon_deg: float, alt_m: float, yaw_deg: float
     ):
-        """Publish a single global setpoint to MAVROS (GeoPoseStamped)."""
-        msg = GeoPoseStamped()
+        """Publish a single global setpoint with altitude relative to home."""
+        msg = GlobalPositionTarget()
         msg.header.stamp = self.get_clock().now().to_msg()
-        msg.header.frame_id = "map"
-        msg.pose.position = GeoPoint(
-            latitude=float(lat_deg),
-            longitude=float(lon_deg),
-            altitude=float(alt_m),
+        msg.coordinate_frame = GlobalPositionTarget.FRAME_GLOBAL_REL_ALT
+        msg.type_mask = (
+            GlobalPositionTarget.IGNORE_VX
+            | GlobalPositionTarget.IGNORE_VY
+            | GlobalPositionTarget.IGNORE_VZ
+            | GlobalPositionTarget.IGNORE_AFX
+            | GlobalPositionTarget.IGNORE_AFY
+            | GlobalPositionTarget.IGNORE_AFZ
+            | GlobalPositionTarget.IGNORE_YAW_RATE
         )
-        msg.pose.orientation = yaw_deg_to_quaternion(yaw_deg)
+        msg.latitude = float(lat_deg)
+        msg.longitude = float(lon_deg)
+        msg.altitude = float(alt_m)
+        msg.yaw = math.radians(float(yaw_deg))
         self._setpoint_pub.publish(msg)
 
     def _distance_to_waypoint(
         self, lat_deg: float, lon_deg: float, alt_m: float
     ) -> float:
         """Current distance to waypoint (horizontal + vertical in meters)."""
-        if not self._position_received or self._current_lat is None:
+        if (
+            not self._position_received
+            or self._current_lat is None
+            or self._current_rel_alt is None
+        ):
             return float("inf")
         horizontal = horizontal_distance_m(
             self._current_lat, self._current_lon, lat_deg, lon_deg
         )
-        vertical = abs(float(self._current_alt) - float(alt_m))
+        vertical = abs(float(self._current_rel_alt) - float(alt_m))
         return math.sqrt(horizontal**2 + vertical**2)
 
     def _execute_callback(self, goal_handle):

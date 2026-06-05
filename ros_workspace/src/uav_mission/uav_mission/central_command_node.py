@@ -24,6 +24,7 @@ from rclpy.node import Node
 from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy
 from mavros_msgs.srv import CommandHome
 from sensor_msgs.msg import NavSatFix, NavSatStatus
+from std_msgs.msg import String
 from uav_msgs.action import (
     OffboardLand,
     OffboardTakeoff,
@@ -147,6 +148,12 @@ class CentralCommandNode(Node):
             self._on_global_gps,
             gps_qos,
         )
+        self.create_subscription(
+            String,
+            "/central_command/abort_mission",
+            self._on_abort_mission,
+            10,
+        )
 
         self._poll_timer = self.create_timer(0.5, self._poll_mission)
         self.get_logger().info(
@@ -192,6 +199,23 @@ class CentralCommandNode(Node):
             "Mission home latched: lat=%.7f lon=%.7f alt=%.2f m"
             % (self._mission_home_lat, self._mission_home_lon, self._mission_home_alt)
         )
+
+    def _on_abort_mission(self, msg: String):
+        if self._mission_failed or self._mission_complete:
+            return
+        reason = (msg.data or "Mission aborted").strip()
+        self.get_logger().error("Mission abort requested: %s" % reason)
+        if self._active_goal_handle is not None:
+            self._active_goal_handle.cancel_goal_async()
+        self._cancel_timeout_timer()
+        self._active_goal_handle = None
+        self._goal_dispatch_in_progress = False
+        self._mission_failed = True
+        step_id = ""
+        if self._step_index < len(self._steps):
+            step_id = self._steps[self._step_index]["id"]
+        self.publish_status("error", reason, step_id=step_id)
+        self._poll_timer.cancel()
 
     def _on_global_gps(self, msg: NavSatFix):
         if self._home_position_latched or self._set_home_in_flight:

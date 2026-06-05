@@ -206,4 +206,14 @@ def _mission_nodes(context, *args, **kwargs):
                 bundle["payload_drop"],
             ],
         ),
+        Node(
+            package="uav_mission",
+            executable="geofence_monitor_node",
+            name="geofence_monitor_node",
+            output="screen",
+            parameters=[
+                {"use_sim_time": use_sim_time},
+                bundle["geofence_monitor"],
+            ],
+        ),
     ]

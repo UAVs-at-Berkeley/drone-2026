@@ -24,6 +24,25 @@ def total_distance(waypoints: List[Tuple], order):
     
     return total
 
+def point_in_polygon(lat: float, lon: float, polygon: List[Tuple[float, float]]) -> bool:
+    """Return True if (lat, lon) is inside a 2D polygon (ray-casting, even-odd rule)."""
+    n = len(polygon)
+    if n < 3:
+        return False
+
+    inside = False
+    j = n - 1
+    for i in range(n):
+        lat_i, lon_i = polygon[i]
+        lat_j, lon_j = polygon[j]
+        if (lon_i > lon) != (lon_j > lon):
+            lat_cross = (lat_j - lat_i) * (lon - lon_i) / (lon_j - lon_i) + lat_i
+            if lat < lat_cross:
+                inside = not inside
+        j = i
+    return inside
+
+
 def tsp_waypoint_optimizer(waypoints: List[Tuple]):
     indices = list(range(len(waypoints)))
 
