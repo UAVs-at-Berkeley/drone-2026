@@ -124,7 +124,7 @@ class PackageDeliveryNode(Node):
         self.declare_parameter("target_longitude_deg", DEFAULT_TARGET_LON)
         self.declare_parameter("mission_timeout_sec", 180.0)
         self.declare_parameter("search_altitude_m", 8.0)
-        self.declare_parameter("release_hover_agl_m", 2.0)
+        self.declare_parameter("release_hover_agl_m", 0.5)
         self.declare_parameter("arrival_radius_m", 1.0)
         self.declare_parameter("release_radius_m", 0.35)
         self.declare_parameter("settle_time_sec", 2.0)
