@@ -53,6 +53,7 @@ setup(
             "object_localization_node = uav_mission.object_localization_node:main",
             "payload_drop_node = uav_mission.payload_drop_node:main",
             "package_delivery_node = uav_mission.package_delivery_node:main",
+            "geofence_monitor_node = uav_mission.geofence_monitor_node:main",
         ],
     },
 )

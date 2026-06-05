@@ -189,6 +189,12 @@ def _mission_nodes(context, *args, **kwargs):
             output="screen",
             parameters=[
                 {"use_sim_time": use_sim_time},
+            executable="geofence_monitor_node",
+            name="geofence_monitor_node",
+            output="screen",
+            parameters=[
+                {"use_sim_time": use_sim_time},
+                bundle["geofence_monitor"],
             ],
         ),
     ]

@@ -85,4 +85,7 @@ def mission_parameter_bundle(context) -> Dict[str, Dict[str, Any]]:
             "number_target_altitude_m": number["alt"],
             "geofence_points_json": json.dumps(geofence_points),
         },
+        "geofence_monitor": {
+            "geofence_points_json": json.dumps(geofence_points),
+        },
     }

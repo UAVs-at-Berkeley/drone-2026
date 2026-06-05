@@ -15,8 +15,21 @@ if [[ "${ELYTRA_TARGET:-}" == "sim" ]]; then
 else
   DRONE_ROS_INSTALL="${DRONE_ROS_INSTALL:-$HOME/drone_workspace/drone-2026/ros_workspace/install/setup.bash}"
 fi
+DRONE_ROS_WORKSPACE="${DRONE_ROS_WORKSPACE:-$(dirname "$(dirname "$DRONE_ROS_INSTALL")")}"
+
+if [[ ! -d "$DRONE_ROS_WORKSPACE/src" ]]; then
+  echo "start_ros.sh: workspace not found: $DRONE_ROS_WORKSPACE" >&2
+  return 1 2>/dev/null || exit 1
+fi
+
+echo "start_ros.sh: building workspace in $DRONE_ROS_WORKSPACE" >&2
+if ! (cd "$DRONE_ROS_WORKSPACE" && colcon build --symlink-install); then
+  echo "start_ros.sh: colcon build failed in $DRONE_ROS_WORKSPACE" >&2
+  return 1 2>/dev/null || exit 1
+fi
+
 if [[ ! -f "$DRONE_ROS_INSTALL" ]]; then
-  echo "start_ros.sh: workspace setup not found: $DRONE_ROS_INSTALL" >&2
+  echo "start_ros.sh: workspace setup not found after build: $DRONE_ROS_INSTALL" >&2
   return 1 2>/dev/null || exit 1
 fi
 source "$DRONE_ROS_INSTALL"

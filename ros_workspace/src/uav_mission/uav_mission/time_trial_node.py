@@ -3,6 +3,10 @@ Time-trial action server. Waypoints are defined only as ``environment.waypoints.
 (``[lat, long, alt_m]``) in the mission YAML; ``mission_loader`` fills ``StartTimeTrial``
 goals and Central Command sends them here. This node does not read ROS parameters for
 waypoint lists.
+
+Waypoint altitudes are relative to the mavlink home (takeoff) position, not AMSL.
+Setpoints use FRAME_GLOBAL_REL_ALT; current altitude comes from
+/mavros/global_position/rel_alt.
 """
 import time
 import rclpy
@@ -12,6 +16,7 @@ from rclpy.executors import MultiThreadedExecutor
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 from sensor_msgs.msg import NavSatFix
 from mavros_msgs.msg import GlobalPositionTarget
+from std_msgs.msg import Float64
 from uav_msgs.action import StartTimeTrial
 from uav_mission.utils import haversine, tsp_waypoint_optimizer
 
@@ -28,7 +33,7 @@ class TimeTrialNode(Node):
 
         self.current_lat = 0.0
         self.current_lon = 0.0
-        self.current_alt = 0.0
+        self.current_rel_alt = None
 
         self._time_trial_action_server = ActionServer(
             self,
@@ -43,6 +48,12 @@ class TimeTrialNode(Node):
             self.on_position,
             qos,
         )
+        self.create_subscription(
+            Float64,
+            '/mavros/global_position/rel_alt',
+            self.on_rel_alt,
+            qos,
+        )
 
         self.setpoint_pub = self.create_publisher(
             GlobalPositionTarget,
@@ -53,7 +64,9 @@ class TimeTrialNode(Node):
     def on_position(self, msg: NavSatFix):
         self.current_lat = msg.latitude
         self.current_lon = msg.longitude
-        self.current_alt = msg.altitude
+
+    def on_rel_alt(self, msg: Float64):
+        self.current_rel_alt = float(msg.data)
     
     def execute_goal(self, goal_handle):
         result = StartTimeTrial.Result()
