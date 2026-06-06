@@ -21,7 +21,7 @@ import rclpy
 from action_msgs.msg import GoalStatus
 from rclpy.action import ActionClient
 from rclpy.node import Node
-from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy
+from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
 from mavros_msgs.srv import CommandHome
 from sensor_msgs.msg import NavSatFix, NavSatStatus
 from std_msgs.msg import String
@@ -137,6 +137,17 @@ class CentralCommandNode(Node):
             "/central_command/mission_status",
             10,
         )
+        mission_home_qos = QoSProfile(
+            depth=1,
+            reliability=ReliabilityPolicy.RELIABLE,
+            durability=DurabilityPolicy.TRANSIENT_LOCAL,
+            history=HistoryPolicy.KEEP_LAST,
+        )
+        self._mission_home_pub = self.create_publisher(
+            NavSatFix,
+            "/central_command/mission_home",
+            mission_home_qos,
+        )
 
         self._steps: List[Dict[str, Any]] = []
         self._environment: Dict[str, Any] = {}
@@ -155,6 +166,7 @@ class CentralCommandNode(Node):
         self._mission_home_lon: Optional[float] = None
         self._mission_home_alt: Optional[float] = None
         self._home_position_latched = False
+        self._mission_home_published = False
         self._set_home_in_flight = False
         self._gps_sub = None
         self._set_home_client = self.create_client(CommandHome, "/mavros/cmd/set_home")
@@ -221,6 +233,7 @@ class CentralCommandNode(Node):
             self.get_logger().error("set_home rejected (result=%s)" % response.result)
             return
         self._home_position_latched = True
+        self._publish_mission_home_once()
         if self._gps_sub is not None:
             self.destroy_subscription(self._gps_sub)
             self._gps_sub = None
@@ -228,6 +241,29 @@ class CentralCommandNode(Node):
             "Mission home latched: lat=%.7f lon=%.7f alt=%.2f m"
             % (self._mission_home_lat, self._mission_home_lon, self._mission_home_alt)
         )
+
+    def _publish_mission_home_once(self):
+        if self._mission_home_published:
+            return
+        if (
+            self._mission_home_lat is None
+            or self._mission_home_lon is None
+            or self._mission_home_alt is None
+        ):
+            self.get_logger().error("Cannot publish mission home: lat/lon/alt not latched")
+            return
+
+        msg = NavSatFix()
+        msg.header.stamp = self.get_clock().now().to_msg()
+        msg.header.frame_id = "mission_home"
+        msg.status.status = NavSatStatus.STATUS_FIX
+        msg.status.service = NavSatStatus.SERVICE_GPS
+        msg.latitude = float(self._mission_home_lat)
+        msg.longitude = float(self._mission_home_lon)
+        msg.altitude = float(self._mission_home_alt)
+
+        self._mission_home_pub.publish(msg)
+        self._mission_home_published = True
 
     def _on_abort_mission(self, msg: String):
         if self._mission_failed or self._mission_complete:
@@ -371,12 +407,21 @@ class CentralCommandNode(Node):
     def _make_goal_response_cb(self, step_id: str):
         def _cb(future):
             self._goal_dispatch_in_progress = False
-            goal_handle = future.result()
+            if self._mission_failed or self._mission_complete:
+                return
+            try:
+                goal_handle = future.result()
+            except Exception as e:
+                self.get_logger().error("Goal response error for %s: %s" % (step_id, str(e)))
+                self._advance_after_step(step_id, "step_failed", str(e))
+                return
             if not goal_handle.accepted:
                 self.get_logger().error("Goal rejected for step %s" % step_id)
-                self._mission_failed = True
-                self.publish_status("error", "Goal rejected: %s" % step_id, step_id=step_id)
-                self._poll_timer.cancel()
+                self._advance_after_step(
+                    step_id,
+                    "step_failed",
+                    "Goal rejected: %s" % step_id,
+                )
                 return
             self._active_goal_handle = goal_handle
             timeout_sec = float(self.get_parameter("step_timeout_sec").value)
@@ -398,55 +443,67 @@ class CentralCommandNode(Node):
             self._active_goal_handle.cancel_goal_async()
         self._cancel_timeout_timer()
 
+    def _advance_after_step(self, step_id: str, status_mode: str, detail: str = ""):
+        completed_idx = self._step_index
+        if status_mode == "step_done":
+            done_msg = detail or "ok"
+            self.get_logger().info("Step %s finished: %s" % (step_id, done_msg))
+        else:
+            failure_msg = detail or "failed"
+            self.get_logger().warn(
+                "Step %s did not complete successfully; continuing mission: %s"
+                % (step_id, failure_msg)
+            )
+
+        status_detail = detail if status_mode != "step_done" else ""
+        self._step_index += 1
+        if self._step_index >= len(self._steps):
+            self._mission_complete = True
+            self.publish_status("mission_done", status_detail, step_id="")
+            self._poll_timer.cancel()
+            return
+
+        self.publish_status(
+            status_mode,
+            status_detail,
+            step_id=step_id,
+            step_index_override=completed_idx,
+        )
+        # Trigger the next step immediately to minimize controller handoff gaps.
+        self._poll_mission()
+
     def _make_result_cb(self, step_id: str):
         def _cb(future):
             self._cancel_timeout_timer()
             self._active_goal_handle = None
+            if self._mission_failed or self._mission_complete:
+                return
             try:
                 wrap = future.result()
                 status = wrap.status
                 result = wrap.result
             except Exception as e:
                 self.get_logger().error("Result error for %s: %s" % (step_id, str(e)))
-                self._mission_failed = True
-                self.publish_status("error", str(e), step_id=step_id)
-                self._poll_timer.cancel()
+                self._advance_after_step(step_id, "step_failed", str(e))
                 return
 
             ok = status == GoalStatus.STATUS_SUCCEEDED
             success = ok and getattr(result, "success", True)
             if success:
                 done_msg = getattr(result, "message", "") or "ok"
-                completed_idx = self._step_index
-                self.get_logger().info("Step %s finished: %s" % (step_id, done_msg))
-                self._step_index += 1
-                if self._step_index >= len(self._steps):
-                    self._mission_complete = True
-                    self.publish_status("mission_done", "", step_id="")
-                    self._poll_timer.cancel()
-                else:
-                    self.publish_status(
-                        "step_done",
-                        "",
-                        step_id=step_id,
-                        step_index_override=completed_idx,
-                    )
-                    # Trigger the next step immediately to minimize controller handoff gaps.
-                    self._poll_mission()
+                self._advance_after_step(step_id, "step_done", done_msg)
             elif status == GoalStatus.STATUS_CANCELED:
-                self._mission_failed = True
-                self.publish_status("error", "Step canceled: %s" % step_id, step_id=step_id)
-                self._poll_timer.cancel()
+                self._advance_after_step(
+                    step_id,
+                    "step_failed",
+                    "Step canceled: %s" % step_id,
+                )
             elif status == GoalStatus.STATUS_ABORTED:
-                self._mission_failed = True
                 detail = getattr(result, "message", "") or "aborted"
-                self.publish_status("error", detail, step_id=step_id)
-                self._poll_timer.cancel()
+                self._advance_after_step(step_id, "step_failed", detail)
             else:
-                self._mission_failed = True
                 detail = getattr(result, "message", "") or "failed"
-                self.publish_status("error", detail, step_id=step_id)
-                self._poll_timer.cancel()
+                self._advance_after_step(step_id, "step_failed", detail)
 
         return _cb
 
