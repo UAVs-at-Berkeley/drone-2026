@@ -17,8 +17,7 @@ from typing import Optional
 
 import rclpy
 from cv_bridge import CvBridge
-from geometry_msgs.msg import PoseStamped, Quaternion
-from mavros_msgs.msg import ExtendedState, HomePosition, State
+from mavros_msgs.msg import ExtendedState, GlobalPositionTarget, State
 from mavros_msgs.srv import CommandLong, CommandTOL
 from rclpy.action import ActionClient, ActionServer
 from rclpy.callback_groups import ReentrantCallbackGroup
@@ -33,7 +32,7 @@ from uav_msgs.action import MoveCamera, StartPackageDelivery
 from uav_msgs.msg import GimbalStatus
 
 EARTH_RADIUS_M = 6_378_137.0
-SETPOINT_RATE_HZ = 20.0
+SETPOINT_RATE_HZ = 50.0
 SETPOINT_PERIOD_SEC = 1.0 / SETPOINT_RATE_HZ
 MAV_CMD_DO_SET_SERVO = 183
 LANDED_STATE_ON_GROUND = 1
@@ -59,6 +58,13 @@ class TargetEstimate:
     source_distance_m: float = 0.0
 
 
+@dataclass(frozen=True)
+class GlobalSetpoint:
+    latitude_deg: float
+    longitude_deg: float
+    relative_altitude_m: float
+
+
 def gps_to_local_enu_m(
     home_lat: float,
     home_lon: float,
@@ -71,15 +77,15 @@ def gps_to_local_enu_m(
     return east_m, north_m
 
 
-def local_enu_to_gps(
-    home_lat: float,
-    home_lon: float,
+def gps_offset_by_enu_m(
+    origin_lat: float,
+    origin_lon: float,
     east_m: float,
     north_m: float,
 ) -> tuple[float, float]:
-    lat0_rad = math.radians(home_lat)
-    lat = home_lat + math.degrees(north_m / EARTH_RADIUS_M)
-    lon = home_lon + math.degrees(east_m / (EARTH_RADIUS_M * math.cos(lat0_rad)))
+    lat0_rad = math.radians(origin_lat)
+    lat = origin_lat + math.degrees(north_m / EARTH_RADIUS_M)
+    lon = origin_lon + math.degrees(east_m / (EARTH_RADIUS_M * math.cos(lat0_rad)))
     return lat, lon
 
 
@@ -112,13 +118,13 @@ class PackageDeliveryNode(Node):
         self._state = State()
         self._state.connected = False
         self._gps: Optional[NavSatFix] = None
-        self._local_pose: Optional[PoseStamped] = None
+        self._current_rel_alt_m: Optional[float] = None
         self._heading_deg = 0.0
+        self._heading_received = False
         self._latest_image: Optional[Image] = None
         self._latest_gimbal: Optional[GimbalStatus] = None
         self._landed_state: Optional[int] = None
-        self._home_lat: Optional[float] = None
-        self._home_lon: Optional[float] = None
+        self._active_setpoint: Optional[GlobalSetpoint] = None
 
         package_dir = Path(__file__).resolve().parent
         self.declare_parameter("model", str(package_dir / "yolo26s-obj_ncnn_model"))
@@ -140,7 +146,7 @@ class PackageDeliveryNode(Node):
         self.declare_parameter("camera_horizontal_fov_deg", 54.7)
         self.declare_parameter("camera_vertical_fov_deg", 30.2)
 
-        # Body-frame lever arms from GPS/local-position reference.
+        # Body-frame lever arms from the GPS position reference.
         # +forward is toward drone nose, +left is toward drone left, +up is above reference.
         self.declare_parameter("camera_forward_offset_m", 0.20)
         self.declare_parameter("camera_left_offset_m", 0.0)
@@ -177,13 +183,6 @@ class PackageDeliveryNode(Node):
             history=HistoryPolicy.KEEP_LAST,
         )
         self.create_subscription(
-            HomePosition,
-            "/mavros/home_position/home",
-            self._home_position_callback,
-            sensor_qos,
-            callback_group=self._cb_group,
-        )
-        self.create_subscription(
             State,
             "/mavros/state",
             self._state_callback,
@@ -205,9 +204,9 @@ class PackageDeliveryNode(Node):
             callback_group=self._cb_group,
         )
         self.create_subscription(
-            PoseStamped,
-            "/mavros/local_position/pose",
-            self._local_pose_callback,
+            Float64,
+            "/mavros/global_position/rel_alt",
+            self._rel_alt_callback,
             sensor_qos,
             callback_group=self._cb_group,
         )
@@ -234,9 +233,14 @@ class PackageDeliveryNode(Node):
         )
 
         self._setpoint_pub = self.create_publisher(
-            PoseStamped,
-            "/mavros/setpoint_position/local",
+            GlobalPositionTarget,
+            "/mavros/setpoint_raw/global",
             10,
+        )
+        self._setpoint_timer = self.create_timer(
+            SETPOINT_PERIOD_SEC,
+            self._setpoint_timer_callback,
+            callback_group=self._cb_group,
         )
         self._camera_client = ActionClient(
             self,
@@ -285,16 +289,6 @@ class PackageDeliveryNode(Node):
             lon = self._float_param("target_longitude_deg")
         return lat, lon, alt
 
-    def _home_position_callback(self, msg: HomePosition) -> None:
-        if self._home_lat is not None and self._home_lon is not None:
-            return
-        self._home_lat = float(msg.geo.latitude)
-        self._home_lon = float(msg.geo.longitude)
-        self.get_logger().info(
-            "Package delivery home position latched: lat=%.7f lon=%.7f"
-            % (self._home_lat, self._home_lon)
-        )
-
     def _state_callback(self, msg: State) -> None:
         self._state = msg
 
@@ -304,11 +298,12 @@ class PackageDeliveryNode(Node):
     def _gps_callback(self, msg: NavSatFix) -> None:
         self._gps = msg
 
-    def _local_pose_callback(self, msg: PoseStamped) -> None:
-        self._local_pose = msg
+    def _rel_alt_callback(self, msg: Float64) -> None:
+        self._current_rel_alt_m = float(msg.data)
 
     def _heading_callback(self, msg: Float64) -> None:
         self._heading_deg = float(msg.data)
+        self._heading_received = True
 
     def _image_callback(self, msg: Image) -> None:
         self._latest_image = msg
@@ -369,6 +364,7 @@ class PackageDeliveryNode(Node):
         release_longitude_deg: float = 0.0,
         release_commanded: bool = False,
     ) -> StartPackageDelivery.Result:
+        self._clear_active_global_setpoint()
         result = self._make_result(
             False,
             message,
@@ -381,6 +377,7 @@ class PackageDeliveryNode(Node):
         return result
 
     def _cancel(self, goal_handle) -> StartPackageDelivery.Result:
+        self._clear_active_global_setpoint()
         result = self._make_result(False, "Cancelled")
         goal_handle.canceled()
         return result
@@ -403,6 +400,9 @@ class PackageDeliveryNode(Node):
             if goal_handle.is_cancel_requested:
                 return self._cancel(goal_handle)
             return self._abort(goal_handle, "Timed out waiting for required inputs")
+
+        if not self._hold_current_global_setpoint():
+            return self._abort(goal_handle, "Unable to hold current GPS setpoint")
 
         if not self._point_camera_nadir(goal_handle):
             if goal_handle.is_cancel_requested:
@@ -504,6 +504,7 @@ class PackageDeliveryNode(Node):
             release_longitude_deg=release_lon,
             release_commanded=release_commanded,
         )
+        self._clear_active_global_setpoint()
         goal_handle.succeed()
         return result
 
@@ -518,12 +519,12 @@ class PackageDeliveryNode(Node):
                 missing.append("FC connection")
             if self._gps is None:
                 missing.append("GPS")
-            if self._local_pose is None:
-                missing.append("local pose")
+            if self._current_rel_alt_m is None:
+                missing.append("relative altitude")
+            if not self._heading_received:
+                missing.append("heading")
             if self._latest_image is None:
                 missing.append("image stream")
-            if self._home_lat is None or self._home_lon is None:
-                missing.append("home position")
 
             if not missing:
                 self._publish_feedback(
@@ -613,68 +614,110 @@ class PackageDeliveryNode(Node):
         )
         return True
 
-    def _local_xyz(self) -> tuple[float, float, float]:
-        assert self._local_pose is not None
-        p = self._local_pose.pose.position
-        return float(p.x), float(p.y), float(p.z)
+    def _hold_current_global_setpoint(self) -> bool:
+        if self._gps is None or self._current_rel_alt_m is None:
+            return False
+        self._set_active_global_setpoint(
+            float(self._gps.latitude),
+            float(self._gps.longitude),
+            float(self._current_rel_alt_m),
+        )
+        return True
 
-    def _current_orientation(self) -> Quaternion:
-        if self._local_pose is None:
-            return Quaternion(x=0.0, y=0.0, z=0.0, w=1.0)
-        q = self._local_pose.pose.orientation
-        return Quaternion(
-            x=float(q.x),
-            y=float(q.y),
-            z=float(q.z),
-            w=float(q.w),
+    def _set_active_global_setpoint(
+        self,
+        latitude_deg: float,
+        longitude_deg: float,
+        relative_altitude_m: float,
+    ) -> None:
+        self._active_setpoint = GlobalSetpoint(
+            latitude_deg=float(latitude_deg),
+            longitude_deg=float(longitude_deg),
+            relative_altitude_m=float(relative_altitude_m),
         )
 
-    def _publish_local_setpoint(
+    def _clear_active_global_setpoint(self) -> None:
+        self._active_setpoint = None
+
+    def _setpoint_timer_callback(self) -> None:
+        setpoint = self._active_setpoint
+        if setpoint is None:
+            return
+        self._publish_global_setpoint(
+            setpoint.latitude_deg,
+            setpoint.longitude_deg,
+            setpoint.relative_altitude_m,
+        )
+
+    def _publish_global_setpoint(
         self,
-        east_m: float,
-        north_m: float,
-        up_m: float,
+        latitude_deg: float,
+        longitude_deg: float,
+        relative_altitude_m: float,
     ) -> None:
-        msg = PoseStamped()
+        msg = GlobalPositionTarget()
         msg.header.stamp = self.get_clock().now().to_msg()
-        msg.header.frame_id = "map"
-        msg.pose.position.x = float(east_m)
-        msg.pose.position.y = float(north_m)
-        msg.pose.position.z = float(up_m)
-        msg.pose.orientation = self._current_orientation()
+        msg.coordinate_frame = GlobalPositionTarget.FRAME_GLOBAL_REL_ALT
+        msg.type_mask = (
+            GlobalPositionTarget.IGNORE_VX
+            | GlobalPositionTarget.IGNORE_VY
+            | GlobalPositionTarget.IGNORE_VZ
+            | GlobalPositionTarget.IGNORE_AFX
+            | GlobalPositionTarget.IGNORE_AFY
+            | GlobalPositionTarget.IGNORE_AFZ
+            | GlobalPositionTarget.IGNORE_YAW
+            | GlobalPositionTarget.IGNORE_YAW_RATE
+        )
+        msg.latitude = float(latitude_deg)
+        msg.longitude = float(longitude_deg)
+        msg.altitude = float(relative_altitude_m)
         self._setpoint_pub.publish(msg)
 
-    def _fly_to_local(
+    def _distance_to_global_setpoint(
+        self,
+        latitude_deg: float,
+        longitude_deg: float,
+        relative_altitude_m: float,
+    ) -> float:
+        if self._gps is None or self._current_rel_alt_m is None:
+            return float("inf")
+        horizontal_error_m = horizontal_distance_m(
+            float(self._gps.latitude),
+            float(self._gps.longitude),
+            latitude_deg,
+            longitude_deg,
+        )
+        vertical_error_m = abs(float(self._current_rel_alt_m) - relative_altitude_m)
+        return math.hypot(horizontal_error_m, vertical_error_m)
+
+    def _fly_to_global(
         self,
         goal_handle,
         phase: str,
-        target_east_m: float,
-        target_north_m: float,
-        target_up_m: float,
+        target_latitude_deg: float,
+        target_longitude_deg: float,
+        target_relative_altitude_m: float,
         radius_m: float,
         deadline_monotonic: float,
         progress: float,
         *,
         estimate: Optional[TargetEstimate] = None,
     ) -> bool:
+        self._set_active_global_setpoint(
+            target_latitude_deg,
+            target_longitude_deg,
+            target_relative_altitude_m,
+        )
         last_feedback_time = time.monotonic() - 0.5
         while rclpy.ok() and time.monotonic() < deadline_monotonic:
             if goal_handle.is_cancel_requested:
                 return False
 
-            self._publish_local_setpoint(
-                target_east_m,
-                target_north_m,
-                target_up_m,
+            setpoint_error_m = self._distance_to_global_setpoint(
+                target_latitude_deg,
+                target_longitude_deg,
+                target_relative_altitude_m,
             )
-
-            current_east_m, current_north_m, current_up_m = self._local_xyz()
-            horizontal_error_m = math.hypot(
-                current_east_m - target_east_m,
-                current_north_m - target_north_m,
-            )
-            vertical_error_m = abs(current_up_m - target_up_m)
-            setpoint_error_m = math.hypot(horizontal_error_m, vertical_error_m)
 
             now = time.monotonic()
             if now - last_feedback_time >= 0.5:
@@ -702,26 +745,17 @@ class PackageDeliveryNode(Node):
         target_lat: float,
         target_lon: float,
     ) -> bool:
-        if self._home_lat is None or self._home_lon is None:
-            return False
-
-        target_east_m, target_north_m = gps_to_local_enu_m(
-            self._home_lat,
-            self._home_lon,
-            target_lat,
-            target_lon,
-        )
         self._publish_feedback(
             goal_handle,
             "transit",
             "Flying to approximate target",
             0.25,
         )
-        arrived = self._fly_to_local(
+        arrived = self._fly_to_global(
             goal_handle,
             "transit",
-            target_east_m,
-            target_north_m,
+            target_lat,
+            target_lon,
             self._float_param("search_altitude_m"),
             self._float_param("arrival_radius_m"),
             deadline_monotonic,
@@ -780,9 +814,9 @@ class PackageDeliveryNode(Node):
         self,
         detection: PixelDetection,
     ) -> Optional[TargetEstimate]:
-        if self._home_lat is None or self._home_lon is None:
+        if self._gps is None:
             return None
-        if self._local_pose is None:
+        if self._current_rel_alt_m is None:
             return None
         if detection.frame_width_px <= 0 or detection.frame_height_px <= 0:
             return None
@@ -797,8 +831,7 @@ class PackageDeliveryNode(Node):
         x_norm = (detection.x_px - center_x_px) / fx_px
         y_norm = (detection.y_px - center_y_px) / fy_px
 
-        vehicle_up_m = float(self._local_pose.pose.position.z)
-        camera_up_m = vehicle_up_m + self._float_param("camera_up_offset_m")
+        camera_up_m = float(self._current_rel_alt_m) + self._float_param("camera_up_offset_m")
         if camera_up_m <= 0.2:
             return None
 
@@ -821,14 +854,11 @@ class PackageDeliveryNode(Node):
             self._heading_deg,
         )
 
-        current_east_m, current_north_m, _ = self._local_xyz()
-        target_east_m = current_east_m + target_offset_east_m
-        target_north_m = current_north_m + target_offset_north_m
-        target_lat, target_lon = local_enu_to_gps(
-            self._home_lat,
-            self._home_lon,
-            target_east_m,
-            target_north_m,
+        target_lat, target_lon = gps_offset_by_enu_m(
+            float(self._gps.latitude),
+            float(self._gps.longitude),
+            target_offset_east_m,
+            target_offset_north_m,
         )
         return TargetEstimate(
             latitude_deg=target_lat,
@@ -864,7 +894,7 @@ class PackageDeliveryNode(Node):
         mean_east = sum(e * w for e, w in zip(weighted_east, weights)) / weight_sum
         mean_north = sum(n * w for n, w in zip(weighted_north, weights)) / weight_sum
         mean_confidence = sum(e.confidence * w for e, w in zip(estimates, weights)) / weight_sum
-        lat, lon = local_enu_to_gps(
+        lat, lon = gps_offset_by_enu_m(
             base.latitude_deg,
             base.longitude_deg,
             mean_east,
@@ -956,27 +986,16 @@ class PackageDeliveryNode(Node):
         target_lat: float,
         target_lon: float,
     ) -> tuple[float, float]:
-        assert self._home_lat is not None
-        assert self._home_lon is not None
-
         delivery_offset_east_m, delivery_offset_north_m = body_offset_to_enu_m(
             self._float_param("release_forward_offset_m"),
             self._float_param("release_left_offset_m"),
             self._heading_deg,
         )
-        command_origin_east_m, command_origin_north_m = gps_to_local_enu_m(
-            self._home_lat,
-            self._home_lon,
+        return gps_offset_by_enu_m(
             target_lat,
             target_lon,
-        )
-        command_origin_east_m -= delivery_offset_east_m
-        command_origin_north_m -= delivery_offset_north_m
-        return local_enu_to_gps(
-            self._home_lat,
-            self._home_lon,
-            command_origin_east_m,
-            command_origin_north_m,
+            -delivery_offset_east_m,
+            -delivery_offset_north_m,
         )
 
     def _fly_to_release_point(
@@ -987,15 +1006,6 @@ class PackageDeliveryNode(Node):
         release_lon: float,
         deadline_monotonic: float,
     ) -> bool:
-        assert self._home_lat is not None
-        assert self._home_lon is not None
-
-        release_east_m, release_north_m = gps_to_local_enu_m(
-            self._home_lat,
-            self._home_lon,
-            release_lat,
-            release_lon,
-        )
         self._publish_feedback(
             goal_handle,
             "precision_approach",
@@ -1003,11 +1013,11 @@ class PackageDeliveryNode(Node):
             0.70,
             estimate=estimate,
         )
-        return self._fly_to_local(
+        return self._fly_to_global(
             goal_handle,
             "precision_approach",
-            release_east_m,
-            release_north_m,
+            release_lat,
+            release_lon,
             self._float_param("release_hover_agl_m"),
             self._float_param("release_radius_m"),
             deadline_monotonic,
@@ -1023,37 +1033,22 @@ class PackageDeliveryNode(Node):
         release_lon: float,
         deadline_monotonic: float,
     ) -> bool:
-        assert self._home_lat is not None
-        assert self._home_lon is not None
-
-        release_east_m, release_north_m = gps_to_local_enu_m(
-            self._home_lat,
-            self._home_lon,
-            release_lat,
-            release_lon,
-        )
         release_alt_m = self._float_param("release_hover_agl_m")
         release_radius_m = self._float_param("release_radius_m")
         settle_time_sec = self._float_param("settle_time_sec")
         stable_since: Optional[float] = None
         last_feedback_time = time.monotonic() - 0.5
+        self._set_active_global_setpoint(release_lat, release_lon, release_alt_m)
 
         while rclpy.ok() and time.monotonic() < deadline_monotonic:
             if goal_handle.is_cancel_requested:
                 return False
 
-            self._publish_local_setpoint(
-                release_east_m,
-                release_north_m,
+            setpoint_error_m = self._distance_to_global_setpoint(
+                release_lat,
+                release_lon,
                 release_alt_m,
             )
-            current_east_m, current_north_m, current_up_m = self._local_xyz()
-            horizontal_error_m = math.hypot(
-                current_east_m - release_east_m,
-                current_north_m - release_north_m,
-            )
-            vertical_error_m = abs(current_up_m - release_alt_m)
-            setpoint_error_m = math.hypot(horizontal_error_m, vertical_error_m)
 
             now = time.monotonic()
             if setpoint_error_m <= release_radius_m:
@@ -1119,6 +1114,7 @@ class PackageDeliveryNode(Node):
         req.longitude = float("nan")
         req.altitude = 0.0
 
+        self._clear_active_global_setpoint()
         future = self._land_client.call_async(req)
         command_deadline = min(deadline_monotonic, time.monotonic() + 5.0)
         while rclpy.ok() and not future.done() and time.monotonic() < command_deadline:
@@ -1160,19 +1156,20 @@ class PackageDeliveryNode(Node):
                 )
                 return True
 
-            current_alt_m = None
-            if self._local_pose is not None:
-                current_alt_m = float(self._local_pose.pose.position.z)
-                if current_alt_m <= self._float_param("landing_complete_altitude_m"):
-                    self._publish_feedback(
-                        goal_handle,
-                        "landing",
-                        "Landing altitude reached",
-                        0.92,
-                        estimate=estimate,
-                        distance_to_release_point_m=0.0,
-                    )
-                    return True
+            current_alt_m = self._current_rel_alt_m
+            if (
+                current_alt_m is not None
+                and current_alt_m <= self._float_param("landing_complete_altitude_m")
+            ):
+                self._publish_feedback(
+                    goal_handle,
+                    "landing",
+                    "Landing altitude reached",
+                    0.92,
+                    estimate=estimate,
+                    distance_to_release_point_m=0.0,
+                )
+                return True
 
             now = time.monotonic()
             if now - last_feedback_time >= 0.5:
